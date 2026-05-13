@@ -1,12 +1,19 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # --- Auth-Schemas ---
 
 class UserRegister(BaseModel):
-    username: str
-    email: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=20)
+    email: EmailStr # Prüft automatisch auf @ und gültige Domain
+    password: str = Field(..., min_length=8)
+
+    @field_validator('password')
+    @classmethod
+    def password_must_contain_number(cls, v: str) -> str:
+        if not any(char.isdigit() for char in v):
+            raise ValueError('Passwort muss mindestens eine Zahl enthalten')
+        return v
 
 
 class UserResponse(BaseModel):
