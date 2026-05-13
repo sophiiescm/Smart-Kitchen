@@ -1,1 +1,303 @@
+<script lang="ts">
+  let username = $state('');
+  let email = $state('');
+  let password = $state('');
+  let passwordConfirm = $state('');
 
+  let errorMessage = $state('');
+  let isLoading = $state(false);
+
+  async function handleRegister(event: Event) {
+    event.preventDefault();
+    errorMessage = '';
+
+    if (password !== passwordConfirm) {
+      errorMessage = 'Die Passwörter stimmen nicht überein.';
+      return;
+    }
+
+    isLoading = true;
+    try {
+      const response = await fetch('http://localhost:8000/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        errorMessage = data.detail ?? 'Registrierung fehlgeschlagen.';
+        return;
+      }
+
+      // Nach erfolgreicher Registrierung → Login
+      window.location.href = '/auth/login';
+
+    } catch {
+      errorMessage = 'Server nicht erreichbar. Bitte versuche es später.';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  // Passwort-Stärke berechnen
+  let passwordStrength = $derived(() => {
+    if (password.length === 0) return 0;
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    return score;
+  });
+
+  const strengthLabel = $derived(() => {
+    const s = passwordStrength();
+    if (s === 0) return '';
+    if (s === 1) return { text: 'Schwach', color: '#e74c3c' };
+    if (s === 2) return { text: 'Mittel', color: '#f39c12' };
+    if (s === 3) return { text: 'Gut', color: '#27ae60' };
+    return { text: 'Stark', color: '#16a085' };
+  });
+</script>
+
+<div class="auth-page">
+  <div class="auth-card">
+
+    <div class="auth-header">
+      <a href="/" class="logo">🍳 Kochbuch</a>
+      <h1>Konto erstellen</h1>
+      <p>Teile deine Lieblingsrezepte mit der Community.</p>
+    </div>
+
+    <form onsubmit={handleRegister}>
+
+      <div class="field">
+        <label for="username">Benutzername</label>
+        <input
+          id="username"
+          type="text"
+          placeholder="kochprofi42"
+          bind:value={username}
+          required
+          autocomplete="username"
+        />
+      </div>
+
+      <div class="field">
+        <label for="email">E-Mail</label>
+        <input
+          id="email"
+          type="email"
+          placeholder="du@beispiel.de"
+          bind:value={email}
+          required
+          autocomplete="email"
+        />
+      </div>
+
+      <div class="field">
+        <label for="password">Passwort</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="Mindestens 8 Zeichen"
+          bind:value={password}
+          required
+          autocomplete="new-password"
+        />
+        {#if password.length > 0}
+          <div class="strength-bar">
+            {#each [1,2,3,4] as i}
+              <div
+                class="strength-segment"
+                style="background: {i <= passwordStrength() ? strengthLabel()?.color : '#e8e4db'}"
+              ></div>
+            {/each}
+            <span class="strength-text" style="color: {strengthLabel()?.color}">
+              {strengthLabel()?.text}
+            </span>
+          </div>
+        {/if}
+      </div>
+
+      <div class="field">
+        <label for="passwordConfirm">Passwort bestätigen</label>
+        <input
+          id="passwordConfirm"
+          type="password"
+          placeholder="••••••••"
+          bind:value={passwordConfirm}
+          required
+          autocomplete="new-password"
+          class:mismatch={passwordConfirm.length > 0 && password !== passwordConfirm}
+        />
+        {#if passwordConfirm.length > 0 && password === passwordConfirm}
+          <span class="match-ok">✓ Passwörter stimmen überein</span>
+        {/if}
+      </div>
+
+      {#if errorMessage}
+        <div class="error-box">⚠️ {errorMessage}</div>
+      {/if}
+
+      <button type="submit" class="btn-submit" disabled={isLoading}>
+        {#if isLoading}
+          <span class="spinner"></span> Registrieren…
+        {:else}
+          Konto erstellen
+        {/if}
+      </button>
+
+    </form>
+
+    <div class="auth-footer">
+      Bereits ein Konto?
+      <a href="/auth/login">Anmelden →</a>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .auth-page {
+    min-height: calc(100vh - 128px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: linear-gradient(135deg, #fff8f6 0%, #faf9f6 60%, #f5f0e8 100%);
+  }
+
+  .auth-card {
+    background: white;
+    border: 1px solid #e8e4db;
+    border-radius: 20px;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.07);
+  }
+
+  .auth-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem;
+    color: #1a1a1a;
+    display: inline-block;
+    margin-bottom: 1.25rem;
+  }
+
+  .auth-header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    color: #1a1a1a;
+    margin-bottom: 0.4rem;
+  }
+
+  .auth-header p { font-size: 0.9rem; color: #888; }
+
+  form { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  label { font-size: 0.85rem; font-weight: 500; color: #444; }
+
+  input {
+    padding: 0.7rem 1rem;
+    border-radius: 10px;
+    border: 1.5px solid #e8e4db;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    color: #1a1a1a;
+    background: #faf9f6;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+
+  input:focus { border-color: #c0392b; background: white; }
+  input.mismatch { border-color: #e74c3c; }
+
+  /* Passwort-Stärke */
+  .strength-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0.25rem;
+  }
+
+  .strength-segment {
+    height: 4px;
+    flex: 1;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+
+  .strength-text {
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+
+  .match-ok {
+    font-size: 0.8rem;
+    color: #27ae60;
+  }
+
+  .error-box {
+    background: #fff0ee;
+    border: 1px solid #f5c6c0;
+    border-radius: 10px;
+    padding: 0.7rem 1rem;
+    font-size: 0.875rem;
+    color: #c0392b;
+  }
+
+  .btn-submit {
+    margin-top: 0.5rem;
+    padding: 0.8rem;
+    border-radius: 10px;
+    border: none;
+    background: #c0392b;
+    color: white;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-submit:hover:not(:disabled) { background: #a93226; }
+  .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .auth-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.875rem;
+    color: #888;
+  }
+
+  .auth-footer a { color: #c0392b; font-weight: 500; }
+  .auth-footer a:hover { text-decoration: underline; }
+</style>
