@@ -21,6 +21,14 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Standard-Port für SvelteKit
+    allow_credentials=True,
+    allow_methods=["*"],                      # Erlaubt GET, POST, PUT, DELETE
+    allow_headers=["*"],
+)
+
 # ---------------------------------------------------------------------------
 # Health Check
 # ---------------------------------------------------------------------------
@@ -45,7 +53,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
+            status_code=status.HTTP_409_CONFLICT,  # Geändert von 400 auf 409 
             detail="Benutzername oder E-Mail bereits registriert"
         )
     # 2. Passwort hashen mit get_password_hash()
@@ -105,6 +113,20 @@ def get_profile(
 # ---------------------------------------------------------------------------
 # TODO: Eure eigenen Endpoints hier einfügen
 # ---------------------------------------------------------------------------
+
+# Platzhalter für Person 3 (API-Logik)
+@app.post("/recipes", status_code=201)
+def create_recipe(
+    # data: RecipeCreate,  <-- Hier kommt später das Schema von Giany/Michael rein
+    current_username: Annotated[str, Depends(get_current_user)], 
+    db: Session = Depends(get_db)
+):
+    """
+    Dieser Endpoint ist durch 'get_current_user' geschützt. 
+    Nur wer einen validen JWT-Token schickt, kommt hier rein.
+    """
+    # Hier wird Giany die Logik zum Speichern in der DB einfügen
+    return {"message": f"Hallo {current_username}, hier wird dein Rezept erstellt."}
 
 # Beispiel:
 # @app.get("/items")
