@@ -1,451 +1,210 @@
 <script lang="ts">
-  // Später kommen echte Daten vom Backend.
-  // Fürs Erste arbeiten wir mit Platzhalterdaten ("Mock-Daten"),
-  // damit wir das Design sehen und testen können.
+    import { onMount } from 'svelte';
 
-  // Das ist ein TypeScript-Typ — beschreibt wie ein Rezept aussieht
-  type Recipe = {
-    id: number;
-    title: string;
-    description: string;
-    category: string;
-    rating: number;
-    ratingCount: number;
-    author: string;
-    timeMinutes: number;
-    emoji: string;
-  };
+    let username = 'Küchenchef'; // Platzhalter für Phase 2
+    
+    // Funktion zum Ausloggen
+    function handleLogout() {
+        localStorage.removeItem('token'); // Token löschen
+        window.location.href = '/auth/login'; // Zurück zum Login
+    }
 
-  // Platzhalterdaten
-  const recipes: Recipe[] = [
-    {
-      id: 1,
-      title: 'Spaghetti Carbonara',
-      description: 'Cremige Pasta mit knusprigem Speck, Ei und Parmesan — ein italienischer Klassiker.',
-      category: 'Pasta',
-      rating: 4.8,
-      ratingCount: 124,
-      author: 'Maria K.',
-      timeMinutes: 25,
-      emoji: '🍝',
-    },
-    {
-      id: 2,
-      title: 'Avocado Toast',
-      description: 'Knuspriges Sauerteigbrot mit cremiger Avocado, Chili und Limette.',
-      category: 'Frühstück',
-      rating: 4.5,
-      ratingCount: 87,
-      author: 'Jonas M.',
-      timeMinutes: 10,
-      emoji: '🥑',
-    },
-    {
-      id: 3,
-      title: 'Kürbissuppe',
-      description: 'Samtiger Hokkaido-Kürbis mit Ingwer und Kokosmilch, perfekt für den Herbst.',
-      category: 'Suppe',
-      rating: 4.7,
-      ratingCount: 63,
-      author: 'Sara L.',
-      timeMinutes: 40,
-      emoji: '🎃',
-    },
-    {
-      id: 4,
-      title: 'Schokoladenkuchen',
-      description: 'Saftig, dunkel, intensiv. Mit flüssigem Kern und Vanilleeis servieren.',
-      category: 'Dessert',
-      rating: 4.9,
-      ratingCount: 201,
-      author: 'Tom R.',
-      timeMinutes: 55,
-      emoji: '🍫',
-    },
-    {
-      id: 5,
-      title: 'Caesar Salad',
-      description: 'Knackiger Römersalat mit hausgemachtem Dressing, Croutons und Parmesan.',
-      category: 'Salat',
-      rating: 4.3,
-      ratingCount: 45,
-      author: 'Lena W.',
-      timeMinutes: 20,
-      emoji: '🥗',
-    },
-    {
-      id: 6,
-      title: 'Shakshuka',
-      description: 'Eier in würziger Tomatensauce mit Paprika und Feta — nahöstlicher Klassiker.',
-      category: 'Frühstück',
-      rating: 4.6,
-      ratingCount: 92,
-      author: 'Ali H.',
-      timeMinutes: 30,
-      emoji: '🍳',
-    },
-  ];
-
-  // Kategorien für den Filter
-  const categories = ['Alle', 'Pasta', 'Frühstück', 'Suppe', 'Dessert', 'Salat'];
-
-  // Welche Kategorie ist gerade ausgewählt?
-  let selectedCategory = $state('Alle');
-
-  // Suchbegriff
-  let searchTerm = $state('');
-
-  // Gefilterte Rezepte (berechnet sich automatisch neu)
-  let filteredRecipes = $derived(
-    recipes.filter((r) => {
-      const matchesCategory = selectedCategory === 'Alle' || r.category === selectedCategory;
-      const matchesSearch =
-        searchTerm === '' ||
-        r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.description.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesCategory && matchesSearch;
-    })
-  );
-
-  // Sterne anzeigen (z.B. 4.8 → "★★★★★")
-  function renderStars(rating: number): string {
-    const full = Math.round(rating);
-    return '★'.repeat(full) + '☆'.repeat(5 - full);
-  }
+    // Kleiner Check für Phase 2: Wenn kein Token da ist, direkt weg hier
+    onMount(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            // In der echten Phase 2 aktivieren wir das:
+            // window.location.href = '/auth/login';
+        }
+    });
 </script>
 
-<!-- ═══════════════════════════════════════════ -->
-<!--  HERO-BEREICH (oben auf der Startseite)    -->
-<!-- ═══════════════════════════════════════════ -->
-<section class="hero">
-  <div class="hero-content">
-    <h1>Kochen, teilen,<br /><em>genießen.</em></h1>
-    <p class="hero-subtitle">
-      Entdecke tausende Rezepte oder teile deine eigenen Kreationen mit der Community.
-    </p>
-
-    <!-- Suchleiste -->
-    <div class="search-bar">
-      <span class="search-icon">🔍</span>
-      <input
-        type="text"
-        placeholder="Rezept suchen..."
-        bind:value={searchTerm}
-      />
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════ -->
-<!--  HAUPTBEREICH: Filter + Rezeptkarten       -->
-<!-- ═══════════════════════════════════════════ -->
-<section class="content">
-  <div class="container">
-
-    <!-- Kategoriefilter -->
-    <div class="filters">
-      {#each categories as cat}
-        <button
-          class="filter-btn"
-          class:selected={selectedCategory === cat}
-          onclick={() => selectedCategory = cat}
-        >
-          {cat}
+<div class="dashboard-container">
+    <nav class="glass-nav">
+        <div class="logo">
+            Smart<span>Kitchen</span>
+        </div>
+        <button class="logout-btn" on:click={handleLogout}>
+            Abmelden
         </button>
-      {/each}
-    </div>
+    </nav>
 
-    <!-- Ergebnisanzahl -->
-    <p class="results-count">
-      {filteredRecipes.length} Rezept{filteredRecipes.length !== 1 ? 'e' : ''} gefunden
-    </p>
+    <main class="content">
+        <header class="welcome-section">
+            <h1>Hallo, <span>{username}!</span></h1>
+            <p>Willkommen zurück. Was kochen wir heute?</p>
+        </header>
 
-    <!-- Rezeptkarten-Raster -->
-    {#if filteredRecipes.length > 0}
-      <div class="recipes-grid">
-        {#each filteredRecipes as recipe (recipe.id)}
-          <a href="/recipes/{recipe.id}" class="recipe-card">
-            <!-- Emoji als "Bild-Platzhalter" -->
-            <div class="card-image">
-              <span class="card-emoji">{recipe.emoji}</span>
-              <span class="card-category">{recipe.category}</span>
+        <div class="grid">
+            <div class="glass-card">
+                <div class="icon">🥗</div>
+                <h3>Rezepte</h3>
+                <p>Entdecke neue Gerichte basierend auf deinem Vorrat.</p>
             </div>
 
-            <div class="card-body">
-              <h2 class="card-title">{recipe.title}</h2>
-              <p class="card-desc">{recipe.description}</p>
-
-              <div class="card-meta">
-                <span class="stars">{renderStars(recipe.rating)}</span>
-                <span class="rating-num">{recipe.rating} ({recipe.ratingCount})</span>
-              </div>
-
-              <div class="card-footer">
-                <span class="author">von {recipe.author}</span>
-                <span class="time">⏱ {recipe.timeMinutes} Min.</span>
-              </div>
+            <div class="glass-card">
+                <div class="icon">🍎</div>
+                <h3>Vorrat</h3>
+                <p>Du hast 12 Artikel, die bald ablaufen.</p>
             </div>
-          </a>
-        {/each}
-      </div>
-    {:else}
-      <!-- Kein Ergebnis -->
-      <div class="empty">
-        <p>😕 Keine Rezepte gefunden.</p>
-        <button onclick={() => { searchTerm = ''; selectedCategory = 'Alle'; }}>
-          Filter zurücksetzen
-        </button>
-      </div>
-    {/if}
 
-  </div>
-</section>
+            <div class="glass-card">
+                <div class="icon">🛒</div>
+                <h3>Einkaufsliste</h3>
+                <p>5 Artikel müssen nachgekauft werden.</p>
+            </div>
+        </div>
+    </main>
+</div>
 
 <style>
-  /* ── Hero ── */
-  .hero {
-    background: linear-gradient(135deg, #fff8f6 0%, #faf9f6 60%, #f5f0e8 100%);
-    padding: 5rem 2rem 4rem;
-    text-align: center;
-    border-bottom: 1px solid #e8e4db;
-  }
+    :global(body) {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: radial-gradient(circle at center, #f8fafc 0%, #f1f5f9 100%);
+        color: #0f172a;
+    }
 
-  .hero-content {
-    max-width: 640px;
-    margin: 0 auto;
-  }
+    .dashboard-container {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
 
-  .hero h1 {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(2.4rem, 5vw, 3.6rem);
-    line-height: 1.15;
-    color: #1a1a1a;
-    margin-bottom: 1rem;
-  }
+    /* Moderne Glass-Navigation */
+    .glass-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 40px;
+        background: rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
 
-  .hero h1 em {
-    font-style: italic;
-    color: #c0392b;
-  }
+    .logo {
+        font-size: 20px;
+        font-weight: 300;
+        letter-spacing: 1px;
+    }
 
-  .hero-subtitle {
-    font-size: 1.05rem;
-    color: #666;
-    line-height: 1.6;
-    margin-bottom: 2rem;
-  }
+    .logo span {
+        font-weight: 700;
+        color: #34d399;
+    }
 
-  /* Suchleiste */
-  .search-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    background: white;
-    border: 1.5px solid #e8e4db;
-    border-radius: 16px;
-    padding: 0.75rem 1.25rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    transition: border-color 0.2s;
-  }
+    .logout-btn {
+        background: #0f172a;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
 
-  .search-bar:focus-within {
-    border-color: #c0392b;
-  }
+    .logout-btn:hover {
+        background: #ef4444; /* Rot beim Ausloggen */
+        transform: translateY(-1px);
+    }
 
-  .search-icon {
-    font-size: 1.1rem;
-    flex-shrink: 0;
-  }
+    .content {
+        max-width: 1000px;
+        margin: 40px auto;
+        padding: 0 20px;
+        width: 100%;
+        box-sizing: border-box;
+    }
 
-  .search-bar input {
-    border: none;
-    outline: none;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 1rem;
-    width: 100%;
-    background: transparent;
-    color: #1a1a1a;
-  }
+    .welcome-section {
+        margin-bottom: 40px;
+    }
 
-  .search-bar input::placeholder {
-    color: #bbb;
-  }
+    .welcome-section h1 {
+        font-size: 36px;
+        font-weight: 300;
+        margin: 0;
+    }
 
-  /* ── Content-Bereich ── */
-  .content {
-    padding: 3rem 2rem;
-  }
+    .welcome-section h1 span {
+        font-weight: 700;
+    }
 
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-  }
+    .welcome-section p {
+        color: #64748b;
+        margin-top: 10px;
+    }
 
-  /* ── Kategorie-Filter ── */
-  .filters {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.5rem;
-  }
+    /* Kachel-System */
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 25px;
+    }
 
-  .filter-btn {
-    padding: 0.4rem 1.1rem;
-    border-radius: 999px;
-    border: 1.5px solid #e8e4db;
-    background: white;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #666;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
+    .glass-card {
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 30px;
+        border-radius: 20px;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.03);
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
 
-  .filter-btn:hover {
-    border-color: #c0392b;
-    color: #c0392b;
-  }
+    .glass-card:hover {
+        transform: translateY(-5px);
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06);
+        border-color: rgba(52, 211, 153, 0.3);
+    }
 
-  .filter-btn.selected {
-    background: #c0392b;
-    border-color: #c0392b;
-    color: white;
-  }
+    .icon {
+        font-size: 32px;
+        margin-bottom: 20px;
+    }
 
-  .results-count {
-    font-size: 0.875rem;
-    color: #999;
-    margin-bottom: 1.5rem;
-  }
+    .glass-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 18px;
+    }
 
-  /* ── Rezept-Karten-Raster ── */
-  .recipes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
-  }
-
-  .recipe-card {
-    background: white;
-    border-radius: 16px;
-    border: 1px solid #e8e4db;
-    overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .recipe-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.1);
-  }
-
-  /* Karten-Bild (Emoji-Platzhalter) */
-  .card-image {
-    background: linear-gradient(135deg, #fff8f6, #fdf0ee);
-    height: 160px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    border-bottom: 1px solid #f5ede8;
-  }
-
-  .card-emoji {
-    font-size: 4rem;
-  }
-
-  .card-category {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    background: white;
-    border: 1px solid #e8e4db;
-    border-radius: 999px;
-    padding: 0.2rem 0.65rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: #666;
-  }
-
-  /* Karten-Inhalt */
-  .card-body {
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex: 1;
-  }
-
-  .card-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.15rem;
-    color: #1a1a1a;
-    line-height: 1.3;
-  }
-
-  .card-desc {
-    font-size: 0.875rem;
-    color: #777;
-    line-height: 1.5;
-    flex: 1;
-  }
-
-  .card-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-  }
-
-  .stars {
-    color: #f0a500;
-    font-size: 0.85rem;
-    letter-spacing: -1px;
-  }
-
-  .rating-num {
-    font-size: 0.8rem;
-    color: #999;
-  }
-
-  .card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 0.75rem;
-    border-top: 1px solid #f5f0e8;
-    font-size: 0.8rem;
-    color: #aaa;
-  }
-
-  /* ── Leerer Zustand ── */
-  .empty {
-    text-align: center;
-    padding: 4rem 2rem;
-    color: #aaa;
-  }
-
-  .empty p {
-    font-size: 1.1rem;
-    margin-bottom: 1rem;
-  }
-
-  .empty button {
-    padding: 0.5rem 1.5rem;
-    border-radius: 8px;
-    border: 1.5px solid #e8e4db;
-    background: white;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.9rem;
-    cursor: pointer;
-    color: #666;
-    transition: all 0.15s;
-  }
-
-  .empty button:hover {
-    border-color: #c0392b;
-    color: #c0392b;
-  }
+    .glass-card p {
+        margin: 0;
+        font-size: 14px;
+        color: #64748b;
+        line-height: 1.5;
+    }
 </style>
+// =========================================================================
+    // TO-DO LISTE FÜR PHASE 2 (BACKEND-ANBINDUNG & SESSIONS)
+    // =========================================================================
+    // TODO 1: Authentifizierung absichern (Auth-Guard)
+    // -> Sicherstellen, dass diese Seite NUR aufgerufen werden kann, wenn ein 
+    //    gültiges Token im Speicher liegt. Falls nicht -> Redirect zu /auth/login.
+    //
+    // TODO 2: Dynamischen Nutzernamen laden
+    // -> Beim Laden der Seite (onMount) einen Fetch-Befehl an das Backend abfeuern 
+    //    (z.B. GET /users/me oder GET /profile), um den echten Namen des
+    //    eingeloggten Nutzers abzufragen und die Variable 'username' zu füllen.
+    //
+    // TODO 3: API-Anbindung für die Dashboard-Kacheln
+    // -> Fetch-Befehle implementieren, um die echten Daten aus der Datenbank
+    //    zu laden:
+    //    - Kachel 1 (Rezepte): GET /recipes (passend zu vorhandenen Zutaten)
+    //    - Kachel 2 (Vorrat): GET /inventory (inkl. Ablaufdatum-Check)
+    //    - Kachel 3 (Einkaufsliste): GET /shopping-list
+    //
+    // TODO 4: Fehlerbehandlung (Session-Expired)
+    // -> Falls ein API-Aufruf den HTTP-Status 401 (Unauthorized) zurückgibt,
+    //    muss der Nutzer automatisch ausgeloggt und zum Login geschickt werden.
+    // =========================================================================
