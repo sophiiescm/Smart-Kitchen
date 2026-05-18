@@ -132,11 +132,11 @@
 
     .header h1 span {
         font-weight: 600;
-        color: #34d399; /* Schönes Smaragdgrün */
+        color: #34d399; 
     }
 
     .subtitle {
-        color: #64748b;
+        color: #000000;;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 2px;
@@ -170,7 +170,7 @@
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 12px;
-        color: #ffffff;
+        color: #000000;;
         font-size: 14px;
         outline: none;
         transition: all 0.3s ease;
@@ -179,11 +179,12 @@
 
     .input-group input:focus {
         border-color: rgba(52, 211, 153, 0.4);
-        background: rgba(255, 255, 255, 0.07);
+        background: #ffffff;
+        color: #000000;
     }
 
     .input-group input::placeholder {
-        color: #4b5563;
+        color: #000000;
     }
 
     /* Eleganter weißer Button, der beim Hover grün wird */
