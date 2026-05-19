@@ -7,12 +7,14 @@ from typing import Optional
 class UserCreate(BaseModel):
     # Das, was der User beim Registrieren mitschickt
     username: str
+    email: str
     password: str
 
 class UserResponse(BaseModel):
     # Das, was das Backend nach außen zurückgibt (ohne Passwort!)
     id: int
     username: str
+    email: str
 
     # Wichtig: Erlaubt das automatische Lesen aus den SQLAlchemy-Modellen
     model_config = {"from_attributes": True}

@@ -14,7 +14,7 @@ from auth import (
 )
 from database import Base, engine, get_db
 from models import User
-from schemas import Token, UserRegister, UserResponse
+from schemas import Token, UserCreate, UserResponse # <-- UserCreate statt UserRegister importieren
 
 # Tabellen anlegen (falls noch nicht vorhanden)
 Base.metadata.create_all(bind=engine)
@@ -43,7 +43,7 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
-def register(data: UserRegister, db: Session = Depends(get_db)):
+def register(data: UserCreate, db: Session = Depends(get_db)): # <-- Hier UserCreate nutzen!
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
     # TODO: Implementiert diese Funktion
     # 1. Prüft, ob username oder email bereits existieren (→ 400)
@@ -62,7 +62,7 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     new_user = User(
         username=data.username,
         email=data.email,
-        hashed_password=hashed_pwd
+        password_hash=hashed_pwd
     )
     db.add(new_user)
     db.commit()
@@ -82,8 +82,8 @@ def login(
     # TODO: Implementiert diese Funktion
     # 1. Benutzer anhand von form_data.username in der DB suchen
     user = db.query(User).filter(User.username == form_data.username).first()
-    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen)
-    target_hash = user.hashed_password if user else DUMMY_HASH
+    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen) (KORREKTUR: user.password_hash statt user.hashed_password!)
+    target_hash = user.password_hash if user else DUMMY_HASH
     if not user or not verify_password(form_data.password, target_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
