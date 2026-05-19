@@ -21,14 +21,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Standard-Port für SvelteKit
-    allow_credentials=True,
-    allow_methods=["*"],                      # Erlaubt GET, POST, PUT, DELETE
-    allow_headers=["*"],
-)
-
 # ---------------------------------------------------------------------------
 # Health Check
 # ---------------------------------------------------------------------------
@@ -47,27 +39,9 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
     # TODO: Implementiert diese Funktion
     # 1. Prüft, ob username oder email bereits existieren (→ 400)
-    existing_user = db.query(User).filter(
-        (User.username == data.username) | (User.email == data.email)
-    ).first()
-    
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,  # Geändert von 400 auf 409 
-            detail="Benutzername oder E-Mail bereits registriert"
-        )
     # 2. Passwort hashen mit get_password_hash()
-    hashed_pwd = get_password_hash(data.password)
     # 3. User-Objekt anlegen, in DB speichern, zurückgeben
-    new_user = User(
-        username=data.username,
-        email=data.email,
-        hashed_password=hashed_pwd
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+    raise HTTPException(status_code=501, detail="Noch nicht implementiert")
 
 
 @app.post("/token", response_model=Token)
@@ -81,20 +55,13 @@ def login(
     """
     # TODO: Implementiert diese Funktion
     # 1. Benutzer anhand von form_data.username in der DB suchen
-    user = db.query(User).filter(User.username == form_data.username).first()
     # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen)
-    target_hash = user.hashed_password if user else DUMMY_HASH
-    if not user or not verify_password(form_data.password, target_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültiger Benutzername oder Passwort",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     # 3. Bei Fehler: 401 zurückgeben (generische Meldung!)
-
-    # 3. Token erzeugen
-    access_token = create_access_token(username=user.username)
-    return {"access_token": access_token, "token_type": "bearer"}
+    # 4. JWT mit create_access_token() erzeugen und zurückgeben
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Noch nicht implementiert",
+    )
 
 
 @app.get("/my-profile", response_model=UserResponse)
@@ -105,28 +72,12 @@ def get_profile(
     """Gibt das Profil des eingeloggten Benutzers zurück (geschützter Endpoint)."""
     # TODO: Implementiert diese Funktion
     # Hinweis: current_username kommt bereits validiert aus dem JWT (via Depends)
-    user = db.query(User).filter(User.username == current_username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
-    return user
+    raise HTTPException(status_code=501, detail="Noch nicht implementiert")
+
 
 # ---------------------------------------------------------------------------
 # TODO: Eure eigenen Endpoints hier einfügen
 # ---------------------------------------------------------------------------
-
-# Platzhalter für Person 3 (API-Logik)
-@app.post("/recipes", status_code=201)
-def create_recipe(
-    # data: RecipeCreate,  <-- Hier kommt später das Schema von Giany/Michael rein
-    current_username: Annotated[str, Depends(get_current_user)], 
-    db: Session = Depends(get_db)
-):
-    """
-    Dieser Endpoint ist durch 'get_current_user' geschützt. 
-    Nur wer einen validen JWT-Token schickt, kommt hier rein.
-    """
-    # Hier wird Giany die Logik zum Speichern in der DB einfügen
-    return {"message": f"Hallo {current_username}, hier wird dein Rezept erstellt."}
 
 # Beispiel:
 # @app.get("/items")
