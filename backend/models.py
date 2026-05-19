@@ -13,6 +13,7 @@ group_recipes = Table(
 
 # 1. users [cite: 2, 3]
 class User(Base):
+    """Benutzertabelle – hier könnt ihr weitere Felder ergänzen."""
     __tablename__ = "users"
     
     id = Column(BigInteger, primary_key=True, index=True)

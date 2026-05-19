@@ -1,22 +1,49 @@
+
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    let username = 'Küchenchef'; // Platzhalter für Phase 2
-    
-    // Funktion zum Ausloggen
-    function handleLogout() {
-        localStorage.removeItem('token'); // Token löschen
-        window.location.href = '/auth/login'; // Zurück zum Login
-    }
+    let username = 'Küchenchef'; // Standard-Name, falls Server lädt
+    let errorMessage = '';
 
-    // Kleiner Check für Phase 2: Wenn kein Token da ist, direkt weg hier
-    onMount(() => {
+    onMount(async () => {
+        // 1. Hol das Token, das wir beim Login im Browser gespeichert haben
         const token = localStorage.getItem('token');
+        
+        // Wenn kein Token da ist, schick den User zurück zum Login
         if (!token) {
-            // In der echten Phase 2 aktivieren wir das:
-            // window.location.href = '/auth/login';
+            window.location.href = '/auth/login';
+            return;
+        }
+
+        try {
+            // 2. Nutze den Code von Copilot, um das Profil vom Backend zu laden
+            // (Passe hier ggf. den Port an, z.B. 8000 oder 8080)
+            const response = await fetch('http://localhost:8000/my-profile', {
+                headers: { 
+                    'Authorization': `Bearer ${token}` // Das zeigt dem Server, wer du bist!
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Sitzung abgelaufen');
+            }
+
+            const data = await response.json();
+            
+            // 3. Setze den echten Namen aus dem Backend ein!
+            username = data.username; 
+
+        } catch (error) {
+            // Falls das Token ungültig war -> ab zum Login
+            localStorage.removeItem('token');
+            window.location.href = '/auth/login';
         }
     });
+
+    function handleLogout() {
+        localStorage.removeItem('token');
+        window.location.href = '/auth/login';
+    }
 </script>
 
 <div class="dashboard-container">

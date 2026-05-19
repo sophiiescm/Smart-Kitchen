@@ -1,7 +1,14 @@
-FROM node:18
+FROM node:20-alpine
+
 WORKDIR /app
+
 COPY package*.json ./
+RUN npm config set strict-ssl false
 RUN npm install
+
 COPY . .
+
 EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host"]
+
+# --host 0.0.0.0 ist notwendig, damit der Port aus dem Container erreichbar ist
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

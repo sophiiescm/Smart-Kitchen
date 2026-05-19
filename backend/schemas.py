@@ -99,5 +99,4 @@ class GroupResponse(BaseModel):
     id: int
     name: str
     owner_id: int
-    # Optional: Wenn man eine Gruppe abruft, könnte man hier auch direkt die List[RecipeResponse] anhängen
     model_config = {"from_attributes": True}
