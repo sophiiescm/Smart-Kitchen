@@ -14,6 +14,26 @@ class UserResponse(BaseModel):
     username: str
     email: str
 
+    # Wichtig: Erlaubt das automatische Lesen aus den SQLAlchemy-Modellen
+    model_config = {"from_attributes": True}
+
+# ==========================================
+# RECIPE SCHEMAS
+# ==========================================
+class RecipeCreate(BaseModel):
+    # Das, was beim Erstellen eines Rezepts gesendet wird
+    title: str
+    description: Optional[str] = None
+    ingredients: str
+
+class RecipeResponse(BaseModel):
+    # Das, was beim Abrufen eines Rezepts zurückkommt
+    id: int
+    title: str
+    description: Optional[str]
+    ingredients: str
+    owner_id: int
+
     model_config = {"from_attributes": True}
 
 

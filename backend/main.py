@@ -14,7 +14,7 @@ from auth import (
 )
 from database import Base, engine, get_db
 from models import User
-from schemas import Token, UserRegister, UserResponse
+from schemas import Token, UserCreate, UserResponse # <-- UserCreate statt UserRegister importieren
 
 # Tabellen anlegen (falls noch nicht vorhanden)
 Base.metadata.create_all(bind=engine)
@@ -35,13 +35,21 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
-def register(data: UserRegister, db: Session = Depends(get_db)):
+def register(data: UserCreate, db: Session = Depends(get_db)): # <-- Hier UserCreate nutzen!
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
     # TODO: Implementiert diese Funktion
     # 1. Prüft, ob username oder email bereits existieren (→ 400)
     # 2. Passwort hashen mit get_password_hash()
     # 3. User-Objekt anlegen, in DB speichern, zurückgeben
-    raise HTTPException(status_code=501, detail="Noch nicht implementiert")
+    new_user = User(
+        username=data.username,
+        email=data.email,
+        password_hash=hashed_pwd
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
 
 
 @app.post("/token", response_model=Token)
@@ -55,7 +63,15 @@ def login(
     """
     # TODO: Implementiert diese Funktion
     # 1. Benutzer anhand von form_data.username in der DB suchen
-    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen)
+    user = db.query(User).filter(User.username == form_data.username).first()
+    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen) (KORREKTUR: user.password_hash statt user.hashed_password!)
+    target_hash = user.password_hash if user else DUMMY_HASH
+    if not user or not verify_password(form_data.password, target_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ungültiger Benutzername oder Passwort",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     # 3. Bei Fehler: 401 zurückgeben (generische Meldung!)
     # 4. JWT mit create_access_token() erzeugen und zurückgeben
     raise HTTPException(
