@@ -2,8 +2,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    let username = 'Küchenchef'; // Standard-Name, falls Server lädt
-    let errorMessage = '';
+    const username = $state('Küchenchef'); // Standard-Name, falls Server lädt
+    const errorMessage = $state('');
 
     onMount(async () => {
         // 1. Hol das Token, das wir beim Login im Browser gespeichert haben
@@ -51,7 +51,7 @@
         <div class="logo">
             Smart<span>Kitchen</span>
         </div>
-        <button class="logout-btn" on:click={handleLogout}>
+        <button class="logout-btn" onclick={handleLogout}>
             Abmelden
         </button>
     </nav>

@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String, Boolean, Text, ForeignKey, Float, DateTime, Table, BigInteger, Integer
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 from datetime import datetime
 
-Base = declarative_base()
+from database import Base
 
 # 7. group_recipes (Verknüpfung Rezepte <-> Gruppen) [cite: 39, 40]
 group_recipes = Table(
@@ -17,9 +17,9 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(BigInteger, primary_key=True, index=True)
-    username = Column(String, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
-    password_hash = Column(String, nullable=False)
+    username = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
 
     # Verknüpfungen (Relationships)
     recipes = relationship("Recipe", back_populates="owner")
@@ -32,11 +32,11 @@ class Recipe(Base):
     
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id"))
-    title = Column(String, nullable=False)
+    title = Column(String(255), nullable=False)
     description = Column(Text)
     prep_time_minutes = Column(Integer)
     servings = Column(Integer)
-    difficulty = Column(String) # ENUM/VARCHAR
+    difficulty = Column(String(50)) # ENUM/VARCHAR
     is_public = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -52,9 +52,9 @@ class RecipeIngredient(Base):
     
     id = Column(BigInteger, primary_key=True, index=True)
     recipe_id = Column(BigInteger, ForeignKey("recipes.id"))
-    name = Column(String, nullable=False) 
+    name = Column(String(255), nullable=False)
     amount = Column(Float)
-    unit = Column(String)
+    unit = Column(String(50))
 
     recipe = relationship("Recipe", back_populates="ingredients")
 
@@ -86,7 +86,7 @@ class Group(Base):
     __tablename__ = "groups"
     
     id = Column(BigInteger, primary_key=True, index=True)
-    name = Column(String, nullable=False)
+    name = Column(String(255), nullable=False)
     owner_id = Column(BigInteger, ForeignKey("users.id"))
 
     owner = relationship("User", back_populates="owned_groups")

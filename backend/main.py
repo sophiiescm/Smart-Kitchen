@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from auth import (
@@ -12,14 +13,49 @@ from auth import (
     get_password_hash,
     verify_password,
 )
-from database import Base, engine, get_db
+from database import Base, SessionLocal, engine, get_db, wait_for_db
 from models import User
-from schemas import Token, UserCreate, UserResponse # <-- UserCreate statt UserRegister importieren
-
-# Tabellen anlegen (falls noch nicht vorhanden)
-Base.metadata.create_all(bind=engine)
+from schemas import Token, UserCreate, UserResponse
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
+
+
+@app.on_event("startup")
+def startup():
+    wait_for_db()
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.username == "testuser").first():
+            db.add(
+                User(
+                    username="testuser",
+                    email="testuser@example.com",
+                    password_hash=get_password_hash("test1234"),
+                )
+            )
+            db.commit()
+            print("Testbenutzer 'testuser' wurde angelegt.")
+    finally:
+        db.close()
+
+# CORS: Erlaube Frontend-Hosts während der Entwicklung.
+# Falls das Frontend auf einem anderen Port läuft, hier ergänzen.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Health Check
@@ -35,16 +71,22 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
-def register(data: UserCreate, db: Session = Depends(get_db)): # <-- Hier UserCreate nutzen!
+def register(data: UserCreate, db: Session = Depends(get_db)):
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
-    # TODO: Implementiert diese Funktion
-    # 1. Prüft, ob username oder email bereits existieren (→ 400)
-    # 2. Passwort hashen mit get_password_hash()
-    # 3. User-Objekt anlegen, in DB speichern, zurückgeben
+    existing = db.query(User).filter(
+        or_(User.username == data.username, User.email == data.email)
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nutzername oder E-Mail bereits vergeben",
+        )
+
+    hashed_pwd = get_password_hash(data.password)
     new_user = User(
         username=data.username,
         email=data.email,
-        password_hash=hashed_pwd
+        password_hash=hashed_pwd,
     )
     db.add(new_user)
     db.commit()
@@ -61,10 +103,7 @@ def login(
     OAuth2 Password Flow: Empfängt username + password als Formular-Daten.
     Gibt einen JWT zurück.
     """
-    # TODO: Implementiert diese Funktion
-    # 1. Benutzer anhand von form_data.username in der DB suchen
     user = db.query(User).filter(User.username == form_data.username).first()
-    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen) (KORREKTUR: user.password_hash statt user.hashed_password!)
     target_hash = user.password_hash if user else DUMMY_HASH
     if not user or not verify_password(form_data.password, target_hash):
         raise HTTPException(
@@ -72,12 +111,9 @@ def login(
             detail="Ungültiger Benutzername oder Passwort",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # 3. Bei Fehler: 401 zurückgeben (generische Meldung!)
-    # 4. JWT mit create_access_token() erzeugen und zurückgeben
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Noch nicht implementiert",
-    )
+
+    access_token = create_access_token(user.username)
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.get("/my-profile", response_model=UserResponse)
@@ -86,9 +122,13 @@ def get_profile(
     db: Session = Depends(get_db),
 ):
     """Gibt das Profil des eingeloggten Benutzers zurück (geschützter Endpoint)."""
-    # TODO: Implementiert diese Funktion
-    # Hinweis: current_username kommt bereits validiert aus dem JWT (via Depends)
-    raise HTTPException(status_code=501, detail="Noch nicht implementiert")
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Benutzer nicht gefunden",
+        )
+    return user
 
 
 # ---------------------------------------------------------------------------

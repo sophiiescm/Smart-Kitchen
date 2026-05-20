@@ -1,36 +1,25 @@
 <script lang="ts">
-    let username = '';
-    let password = '';
-    let errorMessage = '';
-    let isLoading = false;
+    import { goto } from '$app/navigation';
+    import { login } from '$lib/api';
+
+    const username = $state('');
+    const password = $state('');
+    const errorMessage = $state('');
+    const isLoading = $state(false);
 
     async function handleLogin() {
         errorMessage = '';
         isLoading = true;
 
-        const formData = new URLSearchParams();
-        formData.append('username', username);
-        formData.append('password', password);
-
         try {
-            const response = await fetch('http://localhost:8000/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('Ungültige Anmeldedaten');
+            await login(username, password);
+            await goto('/');
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else {
+                errorMessage = 'Login fehlgeschlagen. Bitte versuche es erneut.';
             }
-
-            const data = await response.json();
-            localStorage.setItem('token', data.access_token);
-            window.location.href = '/';
-            
-        } catch (error: any) {
-            errorMessage = error.message || 'Verbindung zum Backend fehlgeschlagen.';
         } finally {
             isLoading = false;
         }
@@ -44,9 +33,9 @@
             <p class="subtitle">Anmeldung</p>
         </div>
 
-        <form on:submit|preventDefault={handleLogin} class="form-style">
+        <form onsubmit|preventDefault={handleLogin} class="form-style">
             {#if errorMessage}
-                <div class="error-box">
+                <div class="error-box" role="alert" aria-live="assertive">
                     {errorMessage}
                 </div>
             {/if}
