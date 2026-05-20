@@ -35,11 +35,21 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
-def register(data: UserCreate, db: Session = Depends(get_db)): # <-- Hier UserCreate nutzen!
+def register(data: UserCreate, db: Session = Depends(get_db)):
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
-    # TODO: Implementiert diese Funktion
     # 1. Prüft, ob username oder email bereits existieren (→ 400)
+    existing_user = db.query(User).filter(
+        (User.username == data.username) | (User.email == data.email)
+    ).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Benutzername oder E-Mail bereits vergeben"
+        )
+    
     # 2. Passwort hashen mit get_password_hash()
+    hashed_pwd = get_password_hash(data.password)
+    
     # 3. User-Objekt anlegen, in DB speichern, zurückgeben
     new_user = User(
         username=data.username,
@@ -61,10 +71,10 @@ def login(
     OAuth2 Password Flow: Empfängt username + password als Formular-Daten.
     Gibt einen JWT zurück.
     """
-    # TODO: Implementiert diese Funktion
     # 1. Benutzer anhand von form_data.username in der DB suchen
     user = db.query(User).filter(User.username == form_data.username).first()
-    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen) (KORREKTUR: user.password_hash statt user.hashed_password!)
+    
+    # 2. Passwort mit verify_password() prüfen (Timing-Schutz: DUMMY_HASH nutzen)
     target_hash = user.password_hash if user else DUMMY_HASH
     if not user or not verify_password(form_data.password, target_hash):
         raise HTTPException(
@@ -72,12 +82,10 @@ def login(
             detail="Ungültiger Benutzername oder Passwort",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # 3. Bei Fehler: 401 zurückgeben (generische Meldung!)
+        
     # 4. JWT mit create_access_token() erzeugen und zurückgeben
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Noch nicht implementiert",
-    )
+    access_token = create_access_token(username=form_data.username)
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.get("/my-profile", response_model=UserResponse)
@@ -86,9 +94,11 @@ def get_profile(
     db: Session = Depends(get_db),
 ):
     """Gibt das Profil des eingeloggten Benutzers zurück (geschützter Endpoint)."""
-    # TODO: Implementiert diese Funktion
-    # Hinweis: current_username kommt bereits validiert aus dem JWT (via Depends)
-    raise HTTPException(status_code=501, detail="Noch nicht implementiert")
+    # 1. Den Benutzer anhand des validierten Namens aus der DB ziehen
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    return user
 
 
 # ---------------------------------------------------------------------------
