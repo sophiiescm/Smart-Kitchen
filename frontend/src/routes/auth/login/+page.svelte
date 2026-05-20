@@ -2,10 +2,11 @@
     import { goto } from '$app/navigation';
     import { login } from '$lib/api';
 
-    const username = $state('');
-    const password = $state('');
-    const errorMessage = $state('');
-    const isLoading = $state(false);
+    
+    let username = $state('Gast');
+    let password = $state('');
+    let errorMessage = $state('');
+    let isLoading = $state(false);
 
     async function handleLogin() {
         errorMessage = '';
@@ -33,7 +34,7 @@
             <p class="subtitle">Anmeldung</p>
         </div>
 
-        <form onsubmit|preventDefault={handleLogin} class="form-style">
+        <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }} class="form-style">
             {#if errorMessage}
                 <div class="error-box" role="alert" aria-live="assertive">
                     {errorMessage}
@@ -70,15 +71,7 @@
 </div>
 
 <style>
-    /* Globales Reset 
-    :global(body) {
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        background-color: #04070a;
-    }
-
-    /*Zentrierung*/
+    /* Zentrierung */
     .login-container {
         position: fixed;
         top: 0;
@@ -125,7 +118,7 @@
     }
 
     .subtitle {
-        color: #000000;;
+        color: #000000;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 2px;
@@ -159,7 +152,7 @@
         background: rgba(255, 255, 255, 0.04);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 12px;
-        color: #000000;;
+        color: #000000;
         font-size: 14px;
         outline: none;
         transition: all 0.3s ease;
@@ -173,7 +166,7 @@
     }
 
     .input-group input::placeholder {
-        color: #000000;
+        color: #64748b;
     }
 
     /* Eleganter weißer Button, der beim Hover grün wird */

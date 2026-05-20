@@ -2,8 +2,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    const username = $state('Küchenchef'); // Standard-Name, falls Server lädt
-    const errorMessage = $state('');
+    let username = $state('Küchenchef'); // Standard-Name, falls Server lädt
+    let errorMessage = $state('');
 
     onMount(async () => {
         // 1. Hol das Token, das wir beim Login im Browser gespeichert haben
