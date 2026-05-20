@@ -105,3 +105,14 @@ class GroupResponse(BaseModel):
     name: str
     owner_id: int
     model_config = {"from_attributes": True}
+
+
+# ==========================================
+# AUTH SCHEMAS (Neu eingefügt für Phase 1)
+# ==========================================
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None

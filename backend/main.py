@@ -72,6 +72,7 @@ def health():
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
 def register(data: UserCreate, db: Session = Depends(get_db)):
+def register(data: UserCreate, db: Session = Depends(get_db)):
     """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
     existing = db.query(User).filter(
         or_(User.username == data.username, User.email == data.email)
