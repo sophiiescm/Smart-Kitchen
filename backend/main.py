@@ -3,8 +3,8 @@ import time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
 
 from auth import (
     DUMMY_HASH,
@@ -18,37 +18,36 @@ from database import Base, SessionLocal, engine, get_db
 from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating
 from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse, RatingCreate, RatingResponse
 
-app = FastAPI(title="Mein Projekt", version="0.1.0")
+app = FastAPI(title="SmartKitchen API", version="0.1.0")
 
 
 @app.on_event("startup")
 def startup():
-      print("Warte kurz auf die Datenbank...")
-      time.sleep(5) 
-      
-      import models
-      print("Erstelle Datenbanktabellen...")
-      models.Base.metadata.create_all(bind=engine)
-      
-      db = SessionLocal()
-      try:
-          if not db.query(User).filter(User.username == "testuser").first():
-              db.add(
-                  User(
-                      username="testuser",
-                      email="testuser@example.com",
-                      password_hash=get_password_hash("test1234"),
-                  )
-              )
-              db.commit()
-              print("Testbenutzer 'testuser' wurde angelegt.")
-      except Exception as e:
-          print(f"Fehler beim Anlegen des Testnutzers: {e}")
-      finally:
-          db.close()
+    print("Warte kurz auf die Datenbank...")
+    time.sleep(5) 
+    
+    print("Erstelle Datenbanktabellen...")
+    Base.metadata.create_all(bind=engine)
+    
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.username == "testuser").first():
+            db.add(
+                User(
+                    username="testuser",
+                    email="testuser@example.com",
+                    password_hash=get_password_hash("test1234"),
+                )
+            )
+            db.commit()
+            print("Testbenutzer 'testuser' wurde angelegt.")
+    except Exception as e:
+        print(f"Fehler beim Anlegen des Testnutzers: {e}")
+    finally:
+        db.close()
 
-# CORS: Erlaube Frontend-Hosts während der Entwicklung.
-# Falls das Frontend auf einem anderen Port läuft, hier ergänzen.
+
+# CORS-Middleware für die Frontend-Kommunikation
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -65,10 +64,6 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Health Check
-# ---------------------------------------------------------------------------
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -80,7 +75,7 @@ def health():
 
 @app.post("/auth/register", response_model=UserResponse, status_code=201)
 def register(data: UserCreate, db: Session = Depends(get_db)):
-    """Neuen Benutzer anlegen. Passwort wird als Argon2-Hash gespeichert."""
+    """Neuen Benutzer anlegen."""
     existing = db.query(User).filter(
         or_(User.username == data.username, User.email == data.email)
     ).first()
@@ -107,10 +102,7 @@ def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db),
 ):
-    """
-    OAuth2 Password Flow: Empfängt username + password als Formular-Daten.
-    Gibt einen JWT zurück.
-    """
+    """Login-Endpoint für den JWT-Token."""
     user = db.query(User).filter(User.username == form_data.username).first()
     target_hash = user.password_hash if user else DUMMY_HASH
     if not user or not verify_password(form_data.password, target_hash):
@@ -129,7 +121,7 @@ def get_profile(
     current_username: Annotated[str, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
-    """Gibt das Profil des eingeloggten Benutzers zurück (geschützter Endpoint)."""
+    """Profil des eingeloggten Benutzers anzeigen."""
     user = db.query(User).filter(User.username == current_username).first()
     if not user:
         raise HTTPException(
@@ -140,16 +132,13 @@ def get_profile(
 
 
 # ---------------------------------------------------------------------------
-# TODO: Eure eigenen Endpoints hier einfügen
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# REZEPT-LOGIK (Phase 2 - Implementiert und abgesichert von Person 2)
+# Rezept- und Bewertungs-Logik
 # ---------------------------------------------------------------------------
 
 @app.post("/recipes", response_model=RecipeResponse, status_code=201)
 def create_recipe(
     data: RecipeCreate,
-    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert durch Person 2
+    current_username: Annotated[str, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
     """Neues Rezept anlegen inklusive strukturierter Zutaten und Schritte."""
@@ -157,7 +146,6 @@ def create_recipe(
     if not user:
         raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
 
-    # 1. Haupt-Rezept anlegen
     new_recipe = Recipe(
         title=data.title,
         description=data.description,
@@ -168,10 +156,9 @@ def create_recipe(
         user_id=user.id
     )
     db.add(new_recipe)
-    db.commit()  # Generiert die neue recipe.id
+    db.commit()
     db.refresh(new_recipe)
 
-    # 2. Zutaten aus der Pydantic-Liste in die DB schreiben (Person 1 Models)
     for ing in data.ingredients:
         db_ingredient = RecipeIngredient(
             recipe_id=new_recipe.id,
@@ -181,7 +168,6 @@ def create_recipe(
         )
         db.add(db_ingredient)
 
-    # 3. Schritte aus der Pydantic-Liste in die DB schreiben (Person 1 Models)
     for step in data.steps:
         db_step = RecipeStep(
             recipe_id=new_recipe.id,
@@ -191,10 +177,10 @@ def create_recipe(
         db.add(db_step)
 
     db.commit()
-    db.refresh(new_recipe)  # Lädt das Rezept mitsamt den neuen Beziehungen neu
+    db.refresh(new_recipe)
     return new_recipe
 
-# 🔍 NEU: Suchfunktion für Phase 3
+
 @app.get("/recipes/search", response_model=list[RecipeResponse])
 def search_recipes(
     title: Optional[str] = None,
@@ -202,7 +188,7 @@ def search_recipes(
     max_time: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """🌐 Öffentlich zugänglich: Sucht nach Rezepten basierend auf Titel, Schwierigkeit oder maximaler Zeit."""
+    """🌐 Filter-Suche nach bestimmten Kriterien (Titel, Schwierigkeit, Zeit)."""
     query = db.query(Recipe)
 
     if title:
@@ -214,40 +200,33 @@ def search_recipes(
 
     return query.all()
 
+
 @app.post("/ratings", response_model=RatingResponse, status_code=201)
-def rate_recipe(
+def rate_recipe_general(
     data: RatingCreate,
     db: Session = Depends(get_db),
-    current_username: Annotated[str, Depends(get_current_user)] = None  # 🔒 Konsistent abgesichert
+    current_username: Annotated[str, Depends(get_current_user)] = None
 ):
-    """Erstellt eine Bewertung (1-5 Sterne) für ein Rezept oder aktualisiert sie."""
-    # 1. Den aktuell eingeloggten User aus der DB laden
+    """Bewertung über den allgemeinen /ratings Endpoint abgeben oder aktualisieren."""
     user = db.query(User).filter(User.username == current_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
         
-    # 2. Prüfen, ob das Rezept existiert
     recipe = db.query(Recipe).filter(Recipe.id == data.recipe_id).first()
     if not recipe:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Rezept nicht gefunden"
-        )
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
         
-    # 3. Prüfen, ob dieser User das Rezept bereits bewertet hat
     existing_rating = db.query(RecipeRating).filter(
         RecipeRating.recipe_id == data.recipe_id,
         RecipeRating.user_id == user.id
     ).first()
     
     if existing_rating:
-        # Falls ja: Bewertung updaten
         existing_rating.rating = data.rating
         db.commit()
         db.refresh(existing_rating)
         return existing_rating
     else:
-        # Falls nein: Neue Bewertung speichern
         new_rating = RecipeRating(
             recipe_id=data.recipe_id,
             user_id=user.id,
@@ -258,35 +237,75 @@ def rate_recipe(
         db.refresh(new_rating)
         return new_rating
 
+
 @app.get("/recipes", response_model=list[RecipeResponse])
-def get_all_recipes(db: Session = Depends(get_db)):
-    """🌐 Öffentlich zugänglich: Alle Rezepte abrufen."""
-    return db.query(Recipe).all()
+def search_and_get_recipes(q: Optional[str] = None, db: Session = Depends(get_db)):
+    """🌐 Alle Rezepte abrufen oder nach Suchbegriff 'q' filtern (inkl. Live-Sterneberechnung)."""
+    query = db.query(
+        Recipe,
+        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average_rating"),
+        func.count(RecipeRating.id).label("rating_count")
+    ).outerjoin(RecipeRating, Recipe.id == RecipeRating.recipe_id)
+
+    if q:
+        search_term = f"%{q}%"
+        query = query.outerjoin(RecipeIngredient, Recipe.id == RecipeIngredient.recipe_id)
+        query = query.filter(
+            or_(
+                Recipe.title.ilike(search_term),
+                Recipe.description.ilike(search_term),
+                RecipeIngredient.name.ilike(search_term)
+            )
+        )
+
+    query = query.group_by(Recipe.id)
+    results = query.all()
+
+    recipes_out = []
+    for recipe, avg, count in results:
+        # Konvertiert das DB-Modell sicher inklusive aller Unterlisten (Zutaten/Schritte)
+        recipe_data = RecipeResponse.model_validate(recipe)
+        recipe_data.average_rating = round(avg, 1)
+        recipe_data.rating_count = count
+        recipes_out.append(recipe_data)
+
+    return recipes_out
 
 
 @app.get("/recipes/{recipe_id}", response_model=RecipeResponse)
 def get_single_recipe(recipe_id: int, db: Session = Depends(get_db)):
-    """🌐 Öffentlich zugänglich: Einzelnes Rezept anhand der ID anzeigen."""
+    """🌐 Einzelnes Rezept anzeigen (inklusive Live-Sterneberechnung und allen Unterlisten!)."""
     recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
-    return recipe
+    
+    # Statistiken für dieses spezifische Rezept holen
+    rating_stats = db.query(
+        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+        func.count(RecipeRating.id).label("count")
+    ).filter(RecipeRating.recipe_id == recipe_id).first()
+    
+    # Sicher in Pydantic mappen, um Untertabellen nicht zu verlieren
+    recipe_data = RecipeResponse.model_validate(recipe)
+    recipe_data.average_rating = round(rating_stats.average, 1)
+    recipe_data.rating_count = rating_stats.count
+    
+    return recipe_data
 
 
 @app.delete("/recipes/{recipe_id}", status_code=200)
 def delete_recipe(
     recipe_id: int,
-    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert!
+    current_username: Annotated[str, Depends(get_current_user)],
     db: Session = Depends(get_db)
 ):
-    """Rezept löschen. Prüft vorher, ob das Rezept wirklich dem User gehört."""
+    """Rezept löschen (nur für den Ersteller erlaubt)."""
     recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
 
     user = db.query(User).filter(User.username == current_username).first()
     
-    # 🔒 Security Check: Gehört das Rezept dem anfragenden User?
     if recipe.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -296,3 +315,41 @@ def delete_recipe(
     db.delete(recipe)
     db.commit()
     return {"detail": "Rezept erfolgreich gelöscht"}
+
+
+@app.post("/recipes/{recipe_id}/ratings", response_model=RatingResponse, status_code=201)
+def rate_recipe_by_id(
+    recipe_id: int, 
+    rating_data: RatingCreate, 
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Rezept direkt über seine ID bewerten."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Benutzer nicht gefunden.")
+    
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden.")
+
+    existing_rating = db.query(RecipeRating).filter(
+        RecipeRating.recipe_id == recipe_id, 
+        RecipeRating.user_id == user.id
+    ).first()
+
+    if existing_rating:
+        existing_rating.rating = rating_data.rating
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        new_rating = RecipeRating(
+            recipe_id=recipe_id,
+            user_id=user.id,
+            rating=rating_data.rating
+        )
+        db.add(new_rating)
+        db.commit()
+        db.refresh(new_rating)
+        return new_rating

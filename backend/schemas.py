@@ -67,12 +67,18 @@ class RecipeCreate(RecipeBase):
     ingredients: List[IngredientCreate] = []
     steps: List[StepCreate] = []
 
+# ==========================================
+# RECIPE SCHEMAS 
+# ==========================================
 class RecipeResponse(RecipeBase):
     id: int
     user_id: int
     created_at: datetime
     
-    # Beim Abrufen liefert das Backend die fertigen Listen direkt mit aus
+    # NEU FÜR PHASE 3: Bewertungs-Metadaten
+    average_rating: float = 0.0
+    rating_count: int = 0
+    
     ingredients: List[IngredientResponse] = []
     steps: List[StepResponse] = []
     
