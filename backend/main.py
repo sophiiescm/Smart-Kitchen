@@ -1,5 +1,5 @@
 from typing import Annotated
-
+import time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -13,31 +13,38 @@ from auth import (
     get_password_hash,
     verify_password,
 )
-from database import Base, SessionLocal, engine, get_db, wait_for_db
-from models import User
-from schemas import Token, UserCreate, UserResponse
+from database import Base, SessionLocal, engine, get_db, 
+from models import User, Recipe
+from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
 
 
 @app.on_event("startup")
-def startup():
-    wait_for_db()
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        if not db.query(User).filter(User.username == "testuser").first():
-            db.add(
-                User(
-                    username="testuser",
-                    email="testuser@example.com",
-                    password_hash=get_password_hash("test1234"),
-                )
-            )
-            db.commit()
-            print("Testbenutzer 'testuser' wurde angelegt.")
-    finally:
-        db.close()
+  def startup():
+      print("Warte kurz auf die Datenbank...")
+      time.sleep(5) 
+      
+      import models
+      print("Erstelle Datenbanktabellen...")
+      models.Base.metadata.create_all(bind=engine)
+      
+      db = SessionLocal()
+      try:
+          if not db.query(User).filter(User.username == "testuser").first():
+              db.add(
+                  User(
+                      username="testuser",
+                      email="testuser@example.com",
+                      password_hash=get_password_hash("test1234"),
+                  )
+              )
+              db.commit()
+              print("Testbenutzer 'testuser' wurde angelegt.")
+      except Exception as e:
+          print(f"Fehler beim Anlegen des Testnutzers: {e}")
+      finally:
+          db.close()
 
 # CORS: Erlaube Frontend-Hosts während der Entwicklung.
 # Falls das Frontend auf einem anderen Port läuft, hier ergänzen.
