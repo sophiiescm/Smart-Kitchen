@@ -22,7 +22,7 @@ app = FastAPI(title="Mein Projekt", version="0.1.0")
 
 
 @app.on_event("startup")
-  def startup():
+def startup():
       print("Warte kurz auf die Datenbank...")
       time.sleep(5) 
       
