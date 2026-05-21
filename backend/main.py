@@ -194,6 +194,49 @@ def create_recipe(
     db.refresh(new_recipe)  # Lädt das Rezept mitsamt den neuen Beziehungen neu
     return new_recipe
 
+@app.post("/ratings", response_model=RatingResponse, status_code=201)
+def rate_recipe(
+    data: RatingCreate,
+    db: Session = Depends(get_db),
+    current_username: Annotated[str, Depends(get_current_user)] = None  # 🔒 Konsistent abgesichert
+):
+    """Erstellt eine Bewertung (1-5 Sterne) für ein Rezept oder aktualisiert sie."""
+    # 1. Den aktuell eingeloggten User aus der DB laden
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+        
+    # 2. Prüfen, ob das Rezept existiert
+    recipe = db.query(Recipe).filter(Recipe.id == data.recipe_id).first()
+    if not recipe:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Rezept nicht gefunden"
+        )
+        
+    # 3. Prüfen, ob dieser User das Rezept bereits bewertet hat
+    existing_rating = db.query(RecipeRating).filter(
+        RecipeRating.recipe_id == data.recipe_id,
+        RecipeRating.user_id == user.id
+    ).first()
+    
+    if existing_rating:
+        # Falls ja: Bewertung updaten
+        existing_rating.rating = data.rating
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        # Falls nein: Neue Bewertung speichern
+        new_rating = RecipeRating(
+            recipe_id=data.recipe_id,
+            user_id=user.id,
+            rating=data.rating
+        )
+        db.add(new_rating)
+        db.commit()
+        db.refresh(new_rating)
+        return new_rating
 
 @app.get("/recipes", response_model=list[RecipeResponse])
 def get_all_recipes(db: Session = Depends(get_db)):
