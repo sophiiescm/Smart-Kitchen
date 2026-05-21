@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 import time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -193,6 +193,26 @@ def create_recipe(
     db.commit()
     db.refresh(new_recipe)  # Lädt das Rezept mitsamt den neuen Beziehungen neu
     return new_recipe
+
+# 🔍 NEU: Suchfunktion für Phase 3
+@app.get("/recipes/search", response_model=list[RecipeResponse])
+def search_recipes(
+    title: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    max_time: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """🌐 Öffentlich zugänglich: Sucht nach Rezepten basierend auf Titel, Schwierigkeit oder maximaler Zeit."""
+    query = db.query(Recipe)
+
+    if title:
+        query = query.filter(Recipe.title.ilike(f"%{title}%"))
+    if difficulty:
+        query = query.filter(Recipe.difficulty == difficulty)
+    if max_time:
+        query = query.filter(Recipe.prep_time_minutes <= max_time)
+
+    return query.all()
 
 @app.post("/ratings", response_model=RatingResponse, status_code=201)
 def rate_recipe(
