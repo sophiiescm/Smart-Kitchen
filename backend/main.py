@@ -180,7 +180,6 @@ def create_recipe(
     db.refresh(new_recipe)
     return new_recipe
 
-
 @app.get("/recipes/search", response_model=list[RecipeResponse])
 def search_recipes(
     title: Optional[str] = None,
