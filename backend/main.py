@@ -13,7 +13,7 @@ from auth import (
     get_password_hash,
     verify_password,
 )
-from database import Base, SessionLocal, engine, get_db, 
+from database import Base, SessionLocal, engine, get_db
 from models import User, Recipe
 from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse
 
@@ -141,16 +141,67 @@ def get_profile(
 # ---------------------------------------------------------------------------
 # TODO: Eure eigenen Endpoints hier einfügen
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# REZEPT-LOGIK (Phase 2 - Implementiert und abgesichert von Person 2 & 3)
+# ---------------------------------------------------------------------------
 
-# Beispiel:
-# @app.get("/items")
-# def get_items(db: Session = Depends(get_db)):
-#     return db.query(Item).all()
-#
-# @app.post("/items", status_code=201)
-# def create_item(data: ItemCreate, db: Session = Depends(get_db)):
-#     item = Item(**data.model_dump())
-#     db.add(item)
-#     db.commit()
-#     db.refresh(item)
-#     return item
+@app.post("/recipes", response_model=RecipeResponse, status_code=201)
+def create_recipe(
+    data: RecipeCreate,
+    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert!
+    db: Session = Depends(get_db)
+):
+    """Neues Rezept anlegen. Automatische Verknüpfung mit dem eingeloggten User."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    new_recipe = Recipe(
+        title=data.title,
+        description=data.description,
+        user_id=user.id  # Setzt die Fremdschlüssel-Beziehung (Owner)
+    )
+    db.add(new_recipe)
+    db.commit()
+    db.refresh(new_recipe)
+    return new_recipe
+
+
+@app.get("/recipes", response_model=list[RecipeResponse])
+def get_all_recipes(db: Session = Depends(get_db)):
+    """🌐 Öffentlich zugänglich: Alle Rezepte abrufen."""
+    return db.query(Recipe).all()
+
+
+@app.get("/recipes/{recipe_id}", response_model=RecipeResponse)
+def get_single_recipe(recipe_id: int, db: Session = Depends(get_db)):
+    """🌐 Öffentlich zugänglich: Einzelnes Rezept anhand der ID anzeigen."""
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+    return recipe
+
+
+@app.delete("/recipes/{recipe_id}", status_code=200)
+def delete_recipe(
+    recipe_id: int,
+    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert!
+    db: Session = Depends(get_db)
+):
+    """Rezept löschen. Prüft vorher, ob das Rezept wirklich dem User gehört."""
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+
+    user = db.query(User).filter(User.username == current_username).first()
+    
+    # 🔒 Security Check: Gehört das Rezept dem anfragenden User?
+    if recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Du bist nicht berechtigt, dieses Rezept zu löschen."
+        )
+
+    db.delete(recipe)
+    db.commit()
+    return {"detail": "Rezept erfolgreich gelöscht"}
