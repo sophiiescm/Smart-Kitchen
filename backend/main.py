@@ -14,8 +14,8 @@ from auth import (
     verify_password,
 )
 from database import Base, SessionLocal, engine, get_db
-from models import User, Recipe
-from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse
+from models import User, Recipe, Reciperating
+from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse, RatingCreate, RatingResponse
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
 
@@ -180,6 +180,48 @@ def get_single_recipe(recipe_id: int, db: Session = Depends(get_db)):
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
     return recipe
+
+@app.post("/recipes/ratings", response_model=RatingResponse, status_code=201)
+def rate_recipe(
+    data: RatingCreate,
+    db: Session = Depends(get_db),
+    current_username: str = Depends(get_current_user)
+):
+    """Erstellt eine Bewertung (1-5 Sterne) für ein Rezept oder aktualisiert sie."""
+    # 1. Den aktuell eingeloggten User aus der DB laden
+    user = db.query(User).filter(User.username == current_username).first()
+    
+    # 2. Prüfen, ob das Rezept existiert
+    recipe = db.query(Recipe).filter(Recipe.id == data.recipe_id).first()
+    if not recipe:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Rezept nicht gefunden"
+        )
+        
+    # 3. Prüfen, ob dieser User das Rezept bereits bewertet hat
+    existing_rating = db.query(RecipeRating).filter(
+        RecipeRating.recipe_id == data.recipe_id,
+        RecipeRating.user_id == user.id
+    ).first()
+    
+    if existing_rating:
+        # Falls ja: Bewertung updaten
+        existing_rating.rating = data.rating
+        db.commit()
+        db.refresh(existing_rating)
+        return existing_rating
+    else:
+        # Falls nein: Neue Bewertung speichern
+        new_rating = RecipeRating(
+            recipe_id=data.recipe_id,
+            user_id=user.id,
+            rating=data.rating
+        )
+        db.add(new_rating)
+        db.commit()
+        db.refresh(new_rating)
+        return new_rating
 
 
 @app.delete("/recipes/{recipe_id}", status_code=200)
