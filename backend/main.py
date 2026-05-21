@@ -14,8 +14,13 @@ from auth import (
     verify_password,
 )
 from database import Base, SessionLocal, engine, get_db
+<<<<<<< HEAD
 from models import User, Recipe, Reciperating
 from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse, RatingCreate, RatingResponse
+=======
+from models import User, Recipe, RecipeIngredient, RecipeStep
+from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse
+>>>>>>> ed320b1 (feat(recipes): complete phase 2, connect nested recipe schemas and enforce owner check on delete (Antonia))
 
 app = FastAPI(title="Mein Projekt", version="0.1.0")
 
@@ -148,22 +153,49 @@ def get_profile(
 @app.post("/recipes", response_model=RecipeResponse, status_code=201)
 def create_recipe(
     data: RecipeCreate,
-    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert!
+    current_username: Annotated[str, Depends(get_current_user)],  # 🔒 Abgesichert durch Person 2
     db: Session = Depends(get_db)
 ):
-    """Neues Rezept anlegen. Automatische Verknüpfung mit dem eingeloggten User."""
+    """Neues Rezept anlegen inklusive strukturierter Zutaten und Schritte."""
     user = db.query(User).filter(User.username == current_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
 
+    # 1. Haupt-Rezept anlegen
     new_recipe = Recipe(
         title=data.title,
         description=data.description,
-        user_id=user.id  # Setzt die Fremdschlüssel-Beziehung (Owner)
+        prep_time_minutes=data.prep_time_minutes,
+        servings=data.servings,
+        difficulty=data.difficulty,
+        is_public=data.is_public,
+        user_id=user.id
     )
     db.add(new_recipe)
-    db.commit()
+    db.commit()  # Generiert die neue recipe.id
     db.refresh(new_recipe)
+
+    # 2. Zutaten aus der Pydantic-Liste in die DB schreiben (Person 1 Models)
+    for ing in data.ingredients:
+        db_ingredient = RecipeIngredient(
+            recipe_id=new_recipe.id,
+            name=ing.name,
+            amount=ing.amount,
+            unit=ing.unit
+        )
+        db.add(db_ingredient)
+
+    # 3. Schritte aus der Pydantic-Liste in die DB schreiben (Person 1 Models)
+    for step in data.steps:
+        db_step = RecipeStep(
+            recipe_id=new_recipe.id,
+            step_number=step.step_number,
+            instruction=step.instruction
+        )
+        db.add(db_step)
+
+    db.commit()
+    db.refresh(new_recipe)  # Lädt das Rezept mitsamt den neuen Beziehungen neu
     return new_recipe
 
 
