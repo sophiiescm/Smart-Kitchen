@@ -1,237 +1,563 @@
-
 <script lang="ts">
-    import { onMount } from 'svelte';
+	import { onMount } from 'svelte';
 
-    let username = $state('Küchenchef'); // Standard-Name, falls Server lädt
-    let errorMessage = $state('');
+	type Recipe = {
+		id: number;
+		title: string;
+		description: string;
+		image_url?: string;
+		cooking_time?: number;
+	};
 
-    onMount(async () => {
-        // 1. Hol das Token, das wir beim Login im Browser gespeichert haben
-        const token = localStorage.getItem('token');
-        
-        // Wenn kein Token da ist, schick den User zurück zum Login
-        if (!token) {
-            window.location.href = '/auth/login';
-            return;
-        }
+	let username = $state('Küchenchef');
+	let errorMessage = $state('');
+	let recipes = $state<Recipe[]>([]);
+	let loading = $state(true);
 
-        try {
-            // 2. Nutze den Code von Copilot, um das Profil vom Backend zu laden
-            // (Passe hier ggf. den Port an, z.B. 8000 oder 8080)
-            const response = await fetch('http://localhost:8000/my-profile', {
-                headers: { 
-                    'Authorization': `Bearer ${token}` // Das zeigt dem Server, wer du bist!
-                }
-            });
+	onMount(async () => {
+		const token = localStorage.getItem('token');
 
-            if (!response.ok) {
-                throw new Error('Sitzung abgelaufen');
-            }
+		if (!token) {
+			window.location.href = '/auth/login';
+			return;
+		}
 
-            const data = await response.json();
-            
-            // 3. Setze den echten Namen aus dem Backend ein!
-            username = data.username; 
+		try {
+			// Benutzer laden
+			const profileResponse = await fetch('http://localhost:8000/my-profile', {
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			});
 
-        } catch (error) {
-            // Falls das Token ungültig war -> ab zum Login
-            localStorage.removeItem('token');
-            window.location.href = '/auth/login';
-        }
-    });
+			if (!profileResponse.ok) {
+				throw new Error('Sitzung abgelaufen');
+			}
 
-    function handleLogout() {
-        localStorage.removeItem('token');
-        window.location.href = '/auth/login';
-    }
+			const profileData = await profileResponse.json();
+			username = profileData.username;
+
+			// Rezepte laden
+			const recipeResponse = await fetch('http://localhost:8000/recipes', {
+				headers: {
+					Authorization: `Bearer ${token}`
+				}
+			});
+
+			if (recipeResponse.ok) {
+				recipes = await recipeResponse.json();
+			}
+		} catch (error) {
+			console.error(error);
+
+			localStorage.removeItem('token');
+			window.location.href = '/auth/login';
+		} finally {
+			loading = false;
+		}
+	});
+
+	function handleLogout() {
+		localStorage.removeItem('token');
+		window.location.href = '/auth/login';
+	}
 </script>
 
 <div class="dashboard-container">
-    <nav class="glass-nav">
-        <div class="logo">
-            Smart<span>Kitchen</span>
-        </div>
-        <button class="logout-btn" onclick={handleLogout}>
-            Abmelden
-        </button>
-    </nav>
+	<!-- Background -->
+	<div class="background-blur blur-1"></div>
+	<div class="background-blur blur-2"></div>
 
-    <main class="content">
-        <header class="welcome-section">
-            <h1>Hallo, <span>{username}!</span></h1>
-            <p>Willkommen zurück. Was kochen wir heute?</p>
-        </header>
+	<!-- Navigation -->
+	<nav class="glass-nav">
+		<div class="logo">
+			Smart<span>Kitchen</span>
+		</div>
 
-        <div class="grid">
-            <div class="glass-card">
-                <div class="icon">🥗</div>
-                <h3>Rezepte</h3>
-                <p>Entdecke neue Gerichte basierend auf deinem Vorrat.</p>
-            </div>
+		<div class="nav-actions">
+			<a href="/recipes/new" class="create-btn">
+				+ Neues Rezept
+			</a>
 
-            <div class="glass-card">
-                <div class="icon">🍎</div>
-                <h3>Vorrat</h3>
-                <p>Du hast 12 Artikel, die bald ablaufen.</p>
-            </div>
+			<button class="logout-btn" onclick={handleLogout}>
+				Abmelden
+			</button>
+		</div>
+	</nav>
 
-            <div class="glass-card">
-                <div class="icon">🛒</div>
-                <h3>Einkaufsliste</h3>
-                <p>5 Artikel müssen nachgekauft werden.</p>
-            </div>
-        </div>
-    </main>
+	<!-- Main -->
+	<main class="content">
+		<!-- Welcome -->
+		<section class="hero">
+			<div class="hero-content">
+				<div class="badge">
+					🍳 Community Rezepte
+				</div>
+
+				<h1>
+					Hallo, <span>{username}</span>
+				</h1>
+
+				<p>
+					Entdecke moderne Rezepte, teile deine Lieblingsgerichte und finde neue Inspiration.
+				</p>
+			</div>
+
+			<div class="hero-stats">
+				<div class="stat-card">
+					<div class="stat-number">
+						{recipes.length}
+					</div>
+
+					<div class="stat-label">
+						Rezepte
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Search -->
+		<div class="searchbar">
+			<input
+				type="text"
+				placeholder="Was möchtest du heute kochen?"
+			/>
+
+			<button>
+				Suchen
+			</button>
+		</div>
+
+		<!-- Recipes -->
+		<section class="recipes-section">
+			<div class="section-header">
+				<div>
+					<h2>Beliebte Rezepte</h2>
+					<p>Die neuesten Gerichte aus der Community</p>
+				</div>
+
+				<a href="/recipes">
+					Alle ansehen →
+				</a>
+			</div>
+
+			{#if loading}
+				<div class="empty-state">
+					Lade Rezepte...
+				</div>
+
+			{:else if recipes.length === 0}
+				<div class="empty-state">
+					Noch keine Rezepte vorhanden.
+				</div>
+
+			{:else}
+				<div class="recipes-grid">
+					{#each recipes as recipe}
+						<a
+							href={`/recipes/${recipe.id}`}
+							class="recipe-card"
+						>
+							<div class="recipe-image">
+								<img
+									src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200'}
+									alt={recipe.title}
+								/>
+
+								<div class="image-overlay"></div>
+							</div>
+
+							<div class="recipe-content">
+								<h3>{recipe.title}</h3>
+
+								<p>{recipe.description}</p>
+
+								<div class="recipe-footer">
+									<span>
+										⏱ {recipe.cooking_time || 20} Min
+									</span>
+
+									<span class="open-link">
+										Öffnen →
+									</span>
+								</div>
+							</div>
+						</a>
+					{/each}
+				</div>
+			{/if}
+		</section>
+	</main>
 </div>
 
 <style>
-    :global(body) {
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: radial-gradient(circle at center, #f8fafc 0%, #f1f5f9 100%);
-        color: #0f172a;
-    }
+	:global(body) {
+		margin: 0;
+		padding: 0;
+		font-family:
+			Inter,
+			-apple-system,
+			BlinkMacSystemFont,
+			'Segoe UI',
+			sans-serif;
+		background: #04070a;
+		color: white;
+	}
 
-    .dashboard-container {
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-    }
+	.dashboard-container {
+		position: relative;
+		min-height: 100vh;
+		overflow: hidden;
+		background: #04070a;
+	}
 
-    /* Moderne Glass-Navigation */
-    .glass-nav {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px 40px;
-        background: rgba(255, 255, 255, 0.4);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-        position: sticky;
-        top: 0;
-        z-index: 100;
-    }
+	.background-blur {
+		position: fixed;
+		border-radius: 9999px;
+		filter: blur(120px);
+		pointer-events: none;
+	}
 
-    .logo {
-        font-size: 20px;
-        font-weight: 300;
-        letter-spacing: 1px;
-    }
+	.blur-1 {
+		top: -200px;
+		left: -150px;
+		width: 500px;
+		height: 500px;
+		background: rgba(34, 197, 94, 0.15);
+	}
 
-    .logo span {
-        font-weight: 700;
-        color: #34d399;
-    }
+	.blur-2 {
+		bottom: -200px;
+		right: -150px;
+		width: 500px;
+		height: 500px;
+		background: rgba(16, 185, 129, 0.12);
+	}
 
-    .logout-btn {
-        background: #0f172a;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
+	/* NAVIGATION */
 
-    .logout-btn:hover {
-        background: #ef4444; /* Rot beim Ausloggen */
-        transform: translateY(-1px);
-    }
+	.glass-nav {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 24px 40px;
+		background: rgba(0, 0, 0, 0.35);
+		backdrop-filter: blur(18px);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	}
 
-    .content {
-        max-width: 1000px;
-        margin: 40px auto;
-        padding: 0 20px;
-        width: 100%;
-        box-sizing: border-box;
-    }
+	.logo {
+		font-size: 28px;
+		font-weight: 900;
+		letter-spacing: -1px;
+	}
 
-    .welcome-section {
-        margin-bottom: 40px;
-    }
+	.logo span {
+		color: #22c55e;
+	}
 
-    .welcome-section h1 {
-        font-size: 36px;
-        font-weight: 300;
-        margin: 0;
-    }
+	.nav-actions {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
 
-    .welcome-section h1 span {
-        font-weight: 700;
-    }
+	.create-btn {
+		padding: 12px 20px;
+		border-radius: 16px;
+		background: linear-gradient(to right, #16a34a, #065f46);
+		color: white;
+		font-weight: 600;
+		text-decoration: none;
+		transition: 0.3s;
+		box-shadow: 0 10px 30px rgba(22, 163, 74, 0.3);
+	}
 
-    .welcome-section p {
-        color: #64748b;
-        margin-top: 10px;
-    }
+	.create-btn:hover {
+		transform: translateY(-2px);
+	}
 
-    /* Kachel-System */
-    .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 25px;
-    }
+	.logout-btn {
+		padding: 12px 18px;
+		border-radius: 16px;
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: white;
+		cursor: pointer;
+		transition: 0.3s;
+	}
 
-    .glass-card {
-        background: rgba(255, 255, 255, 0.5);
-        border: 1px solid rgba(0, 0, 0, 0.05);
-        padding: 30px;
-        border-radius: 20px;
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.03);
-        transition: all 0.3s ease;
-        cursor: pointer;
-    }
+	.logout-btn:hover {
+		background: rgba(239, 68, 68, 0.15);
+		border-color: rgba(239, 68, 68, 0.2);
+	}
 
-    .glass-card:hover {
-        transform: translateY(-5px);
-        background: rgba(255, 255, 255, 0.8);
-        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06);
-        border-color: rgba(52, 211, 153, 0.3);
-    }
+	/* CONTENT */
 
-    .icon {
-        font-size: 32px;
-        margin-bottom: 20px;
-    }
+	.content {
+		max-width: 1400px;
+		margin: 0 auto;
+		padding: 50px 32px 100px;
+	}
 
-    .glass-card h3 {
-        margin: 0 0 10px 0;
-        font-size: 18px;
-    }
+	/* HERO */
 
-    .glass-card p {
-        margin: 0;
-        font-size: 14px;
-        color: #64748b;
-        line-height: 1.5;
-    }
+	.hero {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 40px;
+		margin-bottom: 50px;
+	}
+
+	.hero-content {
+		max-width: 700px;
+	}
+
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 18px;
+		border-radius: 999px;
+		background: rgba(34, 197, 94, 0.1);
+		color: #4ade80;
+		font-size: 14px;
+		font-weight: 600;
+		margin-bottom: 24px;
+	}
+
+	.hero h1 {
+		font-size: 72px;
+		line-height: 0.95;
+		font-weight: 900;
+		margin: 0;
+		letter-spacing: -3px;
+	}
+
+	.hero h1 span {
+		background: linear-gradient(to right, #4ade80, #065f46);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+	}
+
+	.hero p {
+		margin-top: 24px;
+		font-size: 20px;
+		line-height: 1.7;
+		color: #94a3b8;
+		max-width: 600px;
+	}
+
+	.stat-card {
+		padding: 40px;
+		border-radius: 32px;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		backdrop-filter: blur(20px);
+		min-width: 220px;
+		text-align: center;
+	}
+
+	.stat-number {
+		font-size: 56px;
+		font-weight: 900;
+		color: #4ade80;
+	}
+
+	.stat-label {
+		margin-top: 10px;
+		color: #94a3b8;
+	}
+
+	/* SEARCH */
+
+	.searchbar {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		margin-bottom: 60px;
+		padding: 16px;
+		border-radius: 32px;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		backdrop-filter: blur(18px);
+	}
+
+	.searchbar input {
+		flex: 1;
+		background: transparent;
+		border: none;
+		outline: none;
+		font-size: 18px;
+		color: white;
+		padding: 10px 16px;
+	}
+
+	.searchbar input::placeholder {
+		color: #64748b;
+	}
+
+	.searchbar button {
+		border: none;
+		padding: 16px 28px;
+		border-radius: 20px;
+		background: linear-gradient(to right, #16a34a, #065f46);
+		color: white;
+		font-weight: 700;
+		cursor: pointer;
+		transition: 0.3s;
+	}
+
+	.searchbar button:hover {
+		transform: scale(1.02);
+	}
+
+	/* SECTION */
+
+	.section-header {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		margin-bottom: 30px;
+	}
+
+	.section-header h2 {
+		font-size: 38px;
+		margin: 0;
+		font-weight: 800;
+	}
+
+	.section-header p {
+		margin-top: 10px;
+		color: #64748b;
+	}
+
+	.section-header a {
+		color: #4ade80;
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	/* GRID */
+
+	.recipes-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+		gap: 28px;
+	}
+
+	.recipe-card {
+		overflow: hidden;
+		border-radius: 32px;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		backdrop-filter: blur(20px);
+		text-decoration: none;
+		color: inherit;
+		transition: 0.35s;
+	}
+
+	.recipe-card:hover {
+		transform: translateY(-8px);
+		border-color: rgba(34, 197, 94, 0.25);
+		box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+	}
+
+	.recipe-image {
+		position: relative;
+		height: 240px;
+		overflow: hidden;
+	}
+
+	.recipe-image img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition: transform 0.7s ease;
+	}
+
+	.recipe-card:hover img {
+		transform: scale(1.08);
+	}
+
+	.image-overlay {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(to top, rgba(0,0,0,.7), transparent);
+	}
+
+	.recipe-content {
+		padding: 28px;
+	}
+
+	.recipe-content h3 {
+		margin: 0 0 12px;
+		font-size: 28px;
+		font-weight: 800;
+	}
+
+	.recipe-content p {
+		margin: 0 0 24px;
+		line-height: 1.7;
+		color: #94a3b8;
+	}
+
+	.recipe-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding-top: 18px;
+		border-top: 1px solid rgba(255,255,255,0.06);
+		font-size: 14px;
+		color: #64748b;
+	}
+
+	.open-link {
+		color: #4ade80;
+		font-weight: 700;
+	}
+
+	/* EMPTY */
+
+	.empty-state {
+		padding: 80px;
+		text-align: center;
+		border-radius: 32px;
+		background: rgba(255,255,255,0.04);
+		border: 1px solid rgba(255,255,255,0.05);
+		color: #64748b;
+	}
+
+	/* MOBILE */
+
+	@media (max-width: 900px) {
+		.hero {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.hero h1 {
+			font-size: 48px;
+		}
+
+		.glass-nav {
+			padding: 20px;
+		}
+
+		.content {
+			padding: 32px 20px 120px;
+		}
+
+		.searchbar {
+			flex-direction: column;
+		}
+
+		.searchbar button {
+			width: 100%;
+		}
+	}
 </style>
-// =========================================================================
-    // TO-DO LISTE FÜR PHASE 2 (BACKEND-ANBINDUNG & SESSIONS)
-    // =========================================================================
-    // TODO 1: Authentifizierung absichern (Auth-Guard)
-    // -> Sicherstellen, dass diese Seite NUR aufgerufen werden kann, wenn ein 
-    //    gültiges Token im Speicher liegt. Falls nicht -> Redirect zu /auth/login.
-    //
-    // TODO 2: Dynamischen Nutzernamen laden
-    // -> Beim Laden der Seite (onMount) einen Fetch-Befehl an das Backend abfeuern 
-    //    (z.B. GET /users/me oder GET /profile), um den echten Namen des
-    //    eingeloggten Nutzers abzufragen und die Variable 'username' zu füllen.
-    //
-    // TODO 3: API-Anbindung für die Dashboard-Kacheln
-    // -> Fetch-Befehle implementieren, um die echten Daten aus der Datenbank
-    //    zu laden:
-    //    - Kachel 1 (Rezepte): GET /recipes (passend zu vorhandenen Zutaten)
-    //    - Kachel 2 (Vorrat): GET /inventory (inkl. Ablaufdatum-Check)
-    //    - Kachel 3 (Einkaufsliste): GET /shopping-list
-    //
-    // TODO 4: Fehlerbehandlung (Session-Expired)
-    // -> Falls ein API-Aufruf den HTTP-Status 401 (Unauthorized) zurückgibt,
-    //    muss der Nutzer automatisch ausgeloggt und zum Login geschickt werden.
-    // =========================================================================
