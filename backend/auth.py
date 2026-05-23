@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Optional
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -20,6 +20,7 @@ DUMMY_HASH = password_hash.hash("dummypassword")
 
 # FastAPI weiß: Token kommt via "Authorization: Bearer ..." Header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
 def get_password_hash(plain_password: str) -> str:
@@ -65,3 +66,22 @@ async def get_current_user(
         raise credentials_exception
     except Exception:
         raise credentials_exception
+
+
+async def get_current_user_optional(
+    token: Annotated[Optional[str], Depends(oauth2_scheme_optional)],
+) -> Optional[str]:
+    """Optionales Auth-Dependency: gibt den Benutzernamen zurück, wenn ein Token vorhanden ist."""
+    if not token:
+        return None
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username or not isinstance(username, str):
+            return None
+        return username
+    except InvalidTokenError:
+        return None
+    except Exception:
+        return None
