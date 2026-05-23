@@ -34,7 +34,7 @@ export function isLoggedIn(): boolean {
  * Sendet username + password als Formular-Daten (nicht JSON!) an POST /token.
  * Speichert den erhaltenen access_token im localStorage.
  */
-export async function login(username: string, password: string): Promise<void> {
+export async function login(username: string, password: string): Promise<{ access_token: string; token_type: string }> {
 	const body = new URLSearchParams();
 	body.set('username', username);
 	body.set('password', password);
@@ -62,6 +62,7 @@ export async function login(username: string, password: string): Promise<void> {
 	}
 
 	saveToken(data.access_token);
+	return data;
 }
 
 /**

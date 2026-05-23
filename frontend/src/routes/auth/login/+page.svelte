@@ -13,14 +13,9 @@
         isLoading = true;
 
         try {
-            // Hier drin ist 'await' jetzt absolut erlaubt!
-            const data = await login(username, password);
-            
-            if (data && data.access_token) {
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('username', username);
-                await goto('/');
-            }
+            await login(username, password);
+            localStorage.setItem('username', username);
+            await goto('/');
         } catch (error: unknown) {
             if (error instanceof Error) {
                 errorMessage = error.message;
