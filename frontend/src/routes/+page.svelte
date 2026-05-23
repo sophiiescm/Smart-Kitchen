@@ -1,67 +1,39 @@
 <script lang="ts">
-
+    import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
 
-    import { register } from '$lib/api';
+    // Variablen für das Dashboard
+    let username = 'Gast';
+    let recipes: any[] = [];
+    let loading = true;
 
-
-
-let username = '';
-
-let email = '';
-
-let password = '';
-
-let passwordConfirm = '';
-
-let errorMessage = '';
-
-let isLoading = false;
-
-
-
-        if (password !== passwordConfirm) {
-
-            errorMessage = 'Passwörter stimmen nicht überein.';
-
-            return;
-
+    onMount(async () => {
+        // 1. Prüfen, ob der User eingeloggt ist (Name aus dem localStorage holen)
+        const storedUser = localStorage.getItem('username');
+        if (storedUser) {
+            username = storedUser;
         }
 
-
-
-        isLoading = true;
-
-
-
+        // 2. Rezepte vom FastAPI-Backend abrufen
         try {
-
-            await register(username, email, password);
-
-            await goto('/auth/login');
-
-        } catch (error: unknown) {
-
-            if (error instanceof Error) {
-
-                errorMessage = error.message;
-
-            } else {
-
-                errorMessage = 'Registrierung fehlgeschlagen. Bitte versuche es erneut.';
-
+            const res = await fetch('http://localhost:8000/recipes');
+            if (res.ok) {
+                recipes = await res.json();
             }
-
+        } catch (error) {
+            console.error('Fehler beim Laden der Rezepte:', error);
         } finally {
-
-            isLoading = false;
-
+            loading = false;
         }
+    });
 
-   
-
+    // Abmelde-Funktion für den Logout-Button unten
+    function handleLogout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('username');
+        goto('/auth/login');
+    }
 </script>
-
 <div class="dashboard-container">
 	<!-- Background -->
 	<div class="background-blur blur-1"></div>
