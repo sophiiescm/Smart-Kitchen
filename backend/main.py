@@ -10,13 +10,23 @@ from auth import (
     DUMMY_HASH,
     create_access_token,
     get_current_user,
+    get_current_user_optional,
     get_password_hash,
     verify_password,
 )
 
 from database import Base, SessionLocal, engine, get_db
-from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating
-from schemas import Token, UserCreate, UserResponse, RecipeCreate, RecipeResponse, RatingCreate, RatingResponse
+from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating, Tag
+from schemas import (
+    Token,
+    UserCreate,
+    UserResponse,
+    RecipeCreate,
+    RecipeUpdate,
+    RecipeResponse,
+    RatingCreate,
+    RatingResponse,
+)
 
 app = FastAPI(title="SmartKitchen API", version="0.1.0")
 
@@ -152,6 +162,7 @@ def create_recipe(
         prep_time_minutes=data.prep_time_minutes,
         servings=data.servings,
         difficulty=data.difficulty,
+        category=data.category,
         is_public=data.is_public,
         user_id=user.id
     )
@@ -176,28 +187,73 @@ def create_recipe(
         )
         db.add(db_step)
 
+    tags = []
+    for tag_name in data.tags:
+        normalized_name = tag_name.strip()
+        if not normalized_name:
+            continue
+        existing_tag = db.query(Tag).filter(Tag.name == normalized_name).first()
+        if existing_tag:
+            tags.append(existing_tag)
+        else:
+            new_tag = Tag(name=normalized_name)
+            db.add(new_tag)
+            db.commit()
+            db.refresh(new_tag)
+            tags.append(new_tag)
+
+    for tag in tags:
+        new_recipe.tags.append(tag)
+
     db.commit()
     db.refresh(new_recipe)
     return new_recipe
 
 @app.get("/recipes/search", response_model=list[RecipeResponse])
 def search_recipes(
-    title: Optional[str] = None,
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    tag: Optional[str] = None,
     difficulty: Optional[str] = None,
     max_time: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """🌐 Filter-Suche nach bestimmten Kriterien (Titel, Schwierigkeit, Zeit)."""
+    """🌐 Öffentliche Rezepte suchen und nach Kategorie/Tag filtern."""
     query = db.query(Recipe)
+    query = query.filter(Recipe.is_public.is_(True))
 
-    if title:
-        query = query.filter(Recipe.title.ilike(f"%{title}%"))
+    if q:
+        search_term = f"%{q}%"
+        query = query.outerjoin(RecipeIngredient).filter(
+            or_(
+                Recipe.title.ilike(search_term),
+                Recipe.description.ilike(search_term),
+                RecipeIngredient.name.ilike(search_term)
+            )
+        )
+    if category:
+        query = query.filter(Recipe.category.ilike(category))
     if difficulty:
         query = query.filter(Recipe.difficulty == difficulty)
     if max_time:
         query = query.filter(Recipe.prep_time_minutes <= max_time)
+    if tag:
+        query = query.join(Recipe.tags).filter(Tag.name.ilike(tag))
 
-    return query.all()
+    results = query.distinct().all()
+    recipes_out = []
+    for recipe in results:
+        rating_stats = db.query(
+            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+            func.count(RecipeRating.id).label("count")
+        ).filter(RecipeRating.recipe_id == recipe.id).first()
+
+        recipe_data = RecipeResponse.model_validate(recipe)
+        recipe_data.average_rating = round(rating_stats.average, 1)
+        recipe_data.rating_count = rating_stats.count
+        recipes_out.append(recipe_data)
+
+    return recipes_out
 
 
 @app.post("/ratings", response_model=RatingResponse, status_code=201)
@@ -214,6 +270,12 @@ def rate_recipe_general(
     recipe = db.query(Recipe).filter(Recipe.id == data.recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+
+    if not recipe.is_public and recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dieses Rezept ist privat und darf nicht bewertet werden.",
+        )
         
     existing_rating = db.query(RecipeRating).filter(
         RecipeRating.recipe_id == data.recipe_id,
@@ -238,57 +300,201 @@ def rate_recipe_general(
 
 
 @app.get("/recipes", response_model=list[RecipeResponse])
-def search_and_get_recipes(q: Optional[str] = None, db: Session = Depends(get_db)):
-    """🌐 Alle Rezepte abrufen oder nach Suchbegriff 'q' filtern (inkl. Live-Sterneberechnung)."""
-    query = db.query(
-        Recipe,
-        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average_rating"),
-        func.count(RecipeRating.id).label("rating_count")
-    ).outerjoin(RecipeRating, Recipe.id == RecipeRating.recipe_id)
+def list_public_recipes(
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    tag: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    max_time: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """🌐 Öffentliche Rezepte abrufen und optional filtern."""
+    query = db.query(Recipe).filter(Recipe.is_public.is_(True))
 
     if q:
         search_term = f"%{q}%"
-        query = query.outerjoin(RecipeIngredient, Recipe.id == RecipeIngredient.recipe_id)
-        query = query.filter(
+        query = query.outerjoin(RecipeIngredient).filter(
             or_(
                 Recipe.title.ilike(search_term),
                 Recipe.description.ilike(search_term),
                 RecipeIngredient.name.ilike(search_term)
             )
         )
+    if category:
+        query = query.filter(Recipe.category.ilike(category))
+    if difficulty:
+        query = query.filter(Recipe.difficulty == difficulty)
+    if max_time:
+        query = query.filter(Recipe.prep_time_minutes <= max_time)
+    if tag:
+        query = query.join(Recipe.tags).filter(Tag.name.ilike(tag))
 
-    query = query.group_by(Recipe.id)
-    results = query.all()
-
+    recipes = query.distinct().all()
     recipes_out = []
-    for recipe, avg, count in results:
-        # Konvertiert das DB-Modell sicher inklusive aller Unterlisten (Zutaten/Schritte)
+    for recipe in recipes:
+        rating_stats = db.query(
+            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+            func.count(RecipeRating.id).label("count")
+        ).filter(RecipeRating.recipe_id == recipe.id).first()
+
         recipe_data = RecipeResponse.model_validate(recipe)
-        recipe_data.average_rating = round(avg, 1)
-        recipe_data.rating_count = count
+        recipe_data.average_rating = round(rating_stats.average, 1)
+        recipe_data.rating_count = rating_stats.count
         recipes_out.append(recipe_data)
 
     return recipes_out
 
 
 @app.get("/recipes/{recipe_id}", response_model=RecipeResponse)
-def get_single_recipe(recipe_id: int, db: Session = Depends(get_db)):
-    """🌐 Einzelnes Rezept anzeigen (inklusive Live-Sterneberechnung und allen Unterlisten!)."""
+def get_single_recipe(
+    recipe_id: int,
+    db: Session = Depends(get_db),
+    current_username: Annotated[Optional[str], Depends(get_current_user_optional)] = None,
+):
+    """🌐 Einzelnes Rezept anzeigen. Private Rezepte nur für den Besitzer."""
     recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
-    
-    # Statistiken für dieses spezifische Rezept holen
+
+    is_owner = False
+    if current_username:
+        owner = db.query(User).filter(User.username == current_username).first()
+        is_owner = owner is not None and owner.id == recipe.user_id
+
+    if not recipe.is_public and not is_owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dieses Rezept ist privat und nur für den Besitzer sichtbar.",
+        )
+
     rating_stats = db.query(
         func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
         func.count(RecipeRating.id).label("count")
     ).filter(RecipeRating.recipe_id == recipe_id).first()
-    
-    # Sicher in Pydantic mappen, um Untertabellen nicht zu verlieren
+
     recipe_data = RecipeResponse.model_validate(recipe)
     recipe_data.average_rating = round(rating_stats.average, 1)
     recipe_data.rating_count = rating_stats.count
-    
+
+    return recipe_data
+
+
+def _build_tag_objects(db: Session, tag_names: list[str]) -> list[Tag]:
+    tags: list[Tag] = []
+    for tag_name in tag_names:
+        normalized_name = tag_name.strip()
+        if not normalized_name:
+            continue
+        existing_tag = db.query(Tag).filter(Tag.name == normalized_name).first()
+        if existing_tag:
+            tags.append(existing_tag)
+        else:
+            new_tag = Tag(name=normalized_name)
+            db.add(new_tag)
+            db.commit()
+            db.refresh(new_tag)
+            tags.append(new_tag)
+    return tags
+
+
+@app.get("/recipes/mine", response_model=list[RecipeResponse])
+def get_my_recipes(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """🌐 Eigene Rezepte abrufen (inklusive privater Rezepte)."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    recipes = db.query(Recipe).filter(Recipe.user_id == user.id).all()
+    recipes_out = []
+    for recipe in recipes:
+        rating_stats = db.query(
+            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+            func.count(RecipeRating.id).label("count")
+        ).filter(RecipeRating.recipe_id == recipe.id).first()
+
+        recipe_data = RecipeResponse.model_validate(recipe)
+        recipe_data.average_rating = round(rating_stats.average, 1)
+        recipe_data.rating_count = rating_stats.count
+        recipes_out.append(recipe_data)
+
+    return recipes_out
+
+
+@app.put("/recipes/{recipe_id}", response_model=RecipeResponse)
+def update_recipe(
+    recipe_id: int,
+    data: RecipeUpdate,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """Rezept aktualisieren. Nur der Eigentümer darf Änderungen vornehmen."""
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user or recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Du bist nicht berechtigt, dieses Rezept zu bearbeiten.",
+        )
+
+    if data.title is not None:
+        recipe.title = data.title
+    if data.description is not None:
+        recipe.description = data.description
+    if data.prep_time_minutes is not None:
+        recipe.prep_time_minutes = data.prep_time_minutes
+    if data.servings is not None:
+        recipe.servings = data.servings
+    if data.difficulty is not None:
+        recipe.difficulty = data.difficulty
+    if data.category is not None:
+        recipe.category = data.category
+    if data.is_public is not None:
+        recipe.is_public = data.is_public
+
+    if data.ingredients is not None:
+        db.query(RecipeIngredient).filter(RecipeIngredient.recipe_id == recipe.id).delete()
+        for ing in data.ingredients:
+            db.add(
+                RecipeIngredient(
+                    recipe_id=recipe.id,
+                    name=ing.name,
+                    amount=ing.amount,
+                    unit=ing.unit,
+                )
+            )
+
+    if data.steps is not None:
+        db.query(RecipeStep).filter(RecipeStep.recipe_id == recipe.id).delete()
+        for step in data.steps:
+            db.add(
+                RecipeStep(
+                    recipe_id=recipe.id,
+                    step_number=step.step_number,
+                    instruction=step.instruction,
+                )
+            )
+
+    if data.tags is not None:
+        recipe.tags.clear()
+        recipe.tags.extend(_build_tag_objects(db, data.tags))
+
+    db.commit()
+    db.refresh(recipe)
+
+    rating_stats = db.query(
+        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+        func.count(RecipeRating.id).label("count")
+    ).filter(RecipeRating.recipe_id == recipe.id).first()
+
+    recipe_data = RecipeResponse.model_validate(recipe)
+    recipe_data.average_rating = round(rating_stats.average, 1)
+    recipe_data.rating_count = rating_stats.count
     return recipe_data
 
 
@@ -331,6 +537,12 @@ def rate_recipe_by_id(
     recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
     if not recipe:
         raise HTTPException(status_code=404, detail="Rezept nicht gefunden.")
+
+    if not recipe.is_public and recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dieses Rezept ist privat und darf nicht bewertet werden.",
+        )
 
     existing_rating = db.query(RecipeRating).filter(
         RecipeRating.recipe_id == recipe_id, 
