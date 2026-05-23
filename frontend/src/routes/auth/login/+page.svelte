@@ -2,13 +2,10 @@
 	import { goto } from '$app/navigation';
 	import { login } from '$lib/api';
 
-	let username = $state('');
-	let password = $state('');
-	let errorMessage = $state('');
-	let isLoading = $state(false);
-
-	async function handleLogin() {
-		errorMessage = '';
+let username = '';
+let password = '';
+let errorMessage = '';
+let isLoading = false;
 		isLoading = true;
 
 		try {

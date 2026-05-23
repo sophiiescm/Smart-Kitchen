@@ -2,15 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { register } from '$lib/api';
 
-	let username = $state('');
-	let email = $state('');
-	let password = $state('');
-	let passwordConfirm = $state('');
-	let errorMessage = $state('');
-	let isLoading = $state(false);
-
-	async function handleRegister() {
-		errorMessage = '';
+let username = '';
+let email = '';
+let password = '';
+let passwordConfirm = '';
+let errorMessage = '';
+let isLoading = false;
 
 		if (password !== passwordConfirm) {
 			errorMessage = 'Passwörter stimmen nicht überein.';
@@ -21,7 +18,7 @@
 
 		try {
 			await register(username, email, password);
-			await goto('/');
+			await goto('/auth/login');
 		} catch (error: unknown) {
 			if (error instanceof Error) {
 				errorMessage = error.message;

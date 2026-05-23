@@ -1,20 +1,46 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Clock3, Star, Search, Flame } from 'lucide-svelte';
+	import { getPublicRecipes } from '$lib/api';
 
 	type Recipe = {
 		id: number;
 		title: string;
 		description: string;
-		category: string;
-		timeMinutes: number;
-		rating: number;
-		image: string;
+		category?: string;
+		prep_time_minutes?: number;
+		average_rating?: number;
+		rating_count?: number;
 	};
 
-	// später ersetzen durch:
-	// import { getRecipes } from '$lib/api';
+	let recipes: Recipe[] = [];
+	let search = '';
+	let selectedCategory = '';
+	let loading = true;
+	let errorMessage = '';
 
-	const recipes: Recipe[] = [
+	const categories = ['Pasta', 'Dessert', 'Suppe', 'Vegetarisch', 'BBQ'];
+
+	onMount(async () => {
+		try {
+			recipes = await getPublicRecipes();
+		} catch (error) {
+			console.error(error);
+			errorMessage = 'Fehler beim Laden der Rezepte.';
+		} finally {
+			loading = false;
+		}
+	});
+
+	$: filteredRecipes = recipes.filter((recipe) => {
+		const query = search.toLowerCase();
+		const matchesSearch =
+			recipe.title?.toLowerCase().includes(query) ||
+			recipe.description?.toLowerCase().includes(query) ||
+			recipe.category?.toLowerCase().includes(query);
+		const matchesCategory = selectedCategory ? recipe.category === selectedCategory : true;
+		return matchesSearch && matchesCategory;
+	});
 		{
 			id: 1,
 			title: 'Spaghetti Carbonara',
@@ -101,26 +127,41 @@
 
 	<!-- Categories -->
 	<div class="mb-12 flex flex-wrap gap-4">
-		{#each ['Pasta', 'Dessert', 'Suppe', 'Vegetarisch', 'BBQ'] as category}
+		{#each categories as category}
 			<button
-				class="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-gray-300 backdrop-blur-xl transition hover:border-green-500/30 hover:bg-green-500/10 hover:text-green-400"
+				class="rounded-full border px-5 py-3 text-sm transition backdrop-blur-xl"
+				class:selected={selectedCategory === category}
+				on:click={() => (selectedCategory = selectedCategory === category ? '' : category)}
 			>
 				{category}
 			</button>
 		{/each}
+		{#if selectedCategory}
+			<button
+				class="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-gray-300 backdrop-blur-xl transition hover:border-green-500/30 hover:bg-green-500/10 hover:text-green-400"
+				on:click={() => (selectedCategory = '')}
+			>
+				Alle Kategorien
+			</button>
+		{/if}
 	</div>
+
+	{#if errorMessage}
+		<div class="mb-8 rounded-3xl border border-red-500/20 bg-red-500/10 px-6 py-5 text-sm text-red-200">
+			{errorMessage}
+		</div>
+	{/if}
 
 	<!-- Grid -->
 	<div class="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
 		{#each filteredRecipes as recipe}
 			<a
-				href="/recipes/{recipe.id}"
+				href={`/recipes/${recipe.id}`}
 				class="group overflow-hidden rounded-[32px] border border-white/10 bg-[#0B1118]/70 backdrop-blur-xl transition duration-300 hover:-translate-y-2 hover:border-green-500/20"
 			>
 				<div class="relative h-64 overflow-hidden">
 					<img
-						src={recipe.image}
-						alt={recipe.title}
+					src={recipe.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200'}
 						class="h-full w-full object-cover transition duration-700 group-hover:scale-110"
 					/>
 
@@ -138,7 +179,7 @@
 						class="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-sm text-yellow-400 backdrop-blur-xl"
 					>
 						<Star class="h-4 w-4 fill-current" />
-						{recipe.rating}
+						{recipe.average_rating?.toFixed(1) ?? '0.0'}
 					</div>
 				</div>
 

@@ -3,17 +3,25 @@ const API_BASE = 'http://localhost:8000';
 
 /** Hilfsfunktion: gibt den gespeicherten JWT zurück (oder null) */
 function getToken(): string | null {
-	return localStorage.getItem('token');
+	const stored = localStorage.getItem('token');
+	if (stored) {
+		return stored;
+	}
+
+	const cookieMatch = document.cookie.match(/(?:^|; )token=([^;]+)/);
+	return cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
 }
 
 /** Hilfsfunktion: speichert den JWT im localStorage */
 function saveToken(token: string): void {
 	localStorage.setItem('token', token);
+	document.cookie = `token=${encodeURIComponent(token)}; path=/`;
 }
 
 /** Hilfsfunktion: löscht den JWT (Logout) */
 export function logout(): void {
 	localStorage.removeItem('token');
+	document.cookie = 'token=; Max-Age=0; path=/';
 }
 
 /** Gibt true zurück, wenn ein Token gespeichert ist */
@@ -99,21 +107,88 @@ export async function fetchPublic<T>(path: string): Promise<T> {
 	return await response.json() as T;
 }
 
-// TODO: Ergänzt hier eigene API-Funktionen, z. B.:
-// export async function getItems() {
-//   return fetchPublic<Item[]>('/items');
-// }
-//
-// export async function createItem(data: { name: string; price: number }) {
-//   const token = getToken();
-//   const res = await fetch(`${API_BASE}/items`, {
-//     method: 'POST',
-//     headers: {
-//       'Content-Type': 'application/json',
-//       'Authorization': `Bearer ${token}`
-//     },
-//     body: JSON.stringify(data)
-//   });
-//   if (!res.ok) throw new Error('Erstellen fehlgeschlagen');
-//   return res.json();
-// }
+export async function register(username: string, email: string, password: string): Promise<void> {
+	const response = await fetch(`${API_BASE}/auth/register`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ username, email, password })
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text();
+		throw new Error(`Registrierung fehlgeschlagen: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
+	}
+}
+
+export async function getCurrentUser(): Promise<{ username: string; email: string }> {
+	return await fetchProtected('/my-profile');
+}
+
+export async function getPublicRecipes(query?: {
+	q?: string;
+	category?: string;
+	tag?: string;
+	difficulty?: string;
+	max_time?: number;
+}): Promise<any[]> {
+	const params = new URLSearchParams();
+	if (query) {
+		if (query.q) params.set('q', query.q);
+		if (query.category) params.set('category', query.category);
+		if (query.tag) params.set('tag', query.tag);
+		if (query.difficulty) params.set('difficulty', query.difficulty);
+		if (query.max_time !== undefined) params.set('max_time', String(query.max_time));
+	}
+	return await fetchPublic<any[]>(`/recipes?${params.toString()}`);
+}
+
+export async function getMyRecipes(): Promise<any[]> {
+	return await fetchProtected('/recipes/mine');
+}
+
+export async function getRecipe(recipeId: number): Promise<any> {
+	return await fetchPublic<any>(`/recipes/${recipeId}`);
+}
+
+export async function createRecipe(data: {
+	title: string;
+	description: string;
+	category?: string;
+	prep_time_minutes?: number;
+	servings?: number;
+	difficulty?: string;
+	is_public: boolean;
+	ingredients: { name: string; amount?: number; unit?: string }[];
+	steps: { step_number: number; instruction: string }[];
+	tags: string[];
+}): Promise<any> {
+	return await fetchProtected<any>('/recipes', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(data)
+	});
+}
+
+export async function rateRecipe(recipeId: number, rating: number): Promise<any> {
+	return await fetchProtected<any>(`/recipes/${recipeId}/ratings`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ rating })
+	});
+}
+
+export async function updateRecipe(recipeId: number, data: any): Promise<any> {
+	return await fetchProtected<any>(`/recipes/${recipeId}`, {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(data)
+	});
+}

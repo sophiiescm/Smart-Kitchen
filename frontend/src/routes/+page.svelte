@@ -1,65 +1,41 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { getCurrentUser, getMyRecipes, logout } from '$lib/api';
+	import { goto } from '$app/navigation';
 
 	type Recipe = {
 		id: number;
 		title: string;
 		description: string;
-		image_url?: string;
-		cooking_time?: number;
+		category?: string;
+		prep_time_minutes?: number;
+		average_rating?: number;
+		rating_count?: number;
 	};
 
-	let username = $state('Küchenchef');
-	let errorMessage = $state('');
-	let recipes = $state<Recipe[]>([]);
-	let loading = $state(true);
+	let username = 'Küchenchef';
+	let errorMessage = '';
+	let recipes: Recipe[] = [];
+	let loading = true;
 
 	onMount(async () => {
-		const token = localStorage.getItem('token');
-
-		if (!token) {
-			window.location.href = '/auth/login';
-			return;
-		}
-
 		try {
-			// Benutzer laden
-			const profileResponse = await fetch('http://localhost:8000/my-profile', {
-				headers: {
-					Authorization: `Bearer ${token}`
-				}
-			});
+			const profile = await getCurrentUser();
+			username = profile.username;
 
-			if (!profileResponse.ok) {
-				throw new Error('Sitzung abgelaufen');
-			}
-
-			const profileData = await profileResponse.json();
-			username = profileData.username;
-
-			// Rezepte laden
-			const recipeResponse = await fetch('http://localhost:8000/recipes', {
-				headers: {
-					Authorization: `Bearer ${token}`
-				}
-			});
-
-			if (recipeResponse.ok) {
-				recipes = await recipeResponse.json();
-			}
+			recipes = await getMyRecipes();
 		} catch (error) {
 			console.error(error);
-
-			localStorage.removeItem('token');
-			window.location.href = '/auth/login';
+			logout();
+			goto('/auth/login');
 		} finally {
 			loading = false;
 		}
 	});
 
 	function handleLogout() {
-		localStorage.removeItem('token');
-		window.location.href = '/auth/login';
+		logout();
+		goto('/auth/login');
 	}
 </script>
 

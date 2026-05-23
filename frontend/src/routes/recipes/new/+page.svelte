@@ -1,12 +1,19 @@
 <script lang="ts">
-	let title = $state('');
-	let description = $state('');
-	let category = $state('');
-	let time = $state('');
-	let image = $state('');
+	import { goto } from '$app/navigation';
+	import { createRecipe } from '$lib/api';
 
-	let ingredients = $state(['']);
-	let steps = $state(['']);
+	let title = '';
+	let description = '';
+	let category = '';
+	let time = '';
+	let image = '';
+	let tags = '';
+	let isPublic = true;
+	let errorMessage = '';
+	let isSaving = false;
+
+	let ingredients: string[] = [''];
+	let steps: string[] = [''];
 
 	function addIngredient() {
 		ingredients = [...ingredients, ''];
@@ -24,21 +31,42 @@
 		steps = steps.filter((_, i) => i !== index);
 	}
 
-	function submitRecipe() {
-		const recipe = {
+	async function submitRecipe() {
+		errorMessage = '';
+		isSaving = true;
+
+		const payload = {
 			title,
 			description,
 			category,
-			time,
-			image,
-			ingredients,
-			steps
+			prep_time_minutes: time ? Number(time) : undefined,
+			servings: undefined,
+			difficulty: undefined,
+			is_public: isPublic,
+			ingredients: ingredients
+				.filter((item) => item.trim().length > 0)
+				.map((name) => ({ name, amount: undefined, unit: undefined })),
+			steps: steps
+				.filter((item) => item.trim().length > 0)
+				.map((instruction, index) => ({ step_number: index + 1, instruction })),
+			tags: tags
+				.split(',')
+				.map((tag) => tag.trim())
+				.filter((tag) => tag.length > 0),
 		};
 
-		console.log(recipe);
-
-		// später:
-		// await createRecipe(recipe)
+		try {
+			await createRecipe(payload);
+			goto('/recipes');
+		} catch (error: unknown) {
+			if (error instanceof Error) {
+				errorMessage = error.message;
+			} else {
+				errorMessage = 'Fehler beim Erstellen des Rezepts.';
+			}
+		} finally {
+			isSaving = false;
+		}
 	}
 </script>
 
@@ -105,6 +133,30 @@
 								<option>Frühstück</option>
 								<option>Vegetarisch</option>
 							</select>
+						</div>
+
+						<div class="field">
+							<label>Tags</label>
+							<input
+								bind:value={tags}
+								type="text"
+								placeholder="z. B. schnell, vegan, einfach"
+							/>
+							<p class="hint">Getrennt durch Kommas eingeben.</p>
+						</div>
+
+						<div class="field">
+							<label>Rezept sichtbar</label>
+							<div class="toggle-group">
+								<label>
+									<input type="radio" bind:group={isPublic} value={true} />
+									Öffentlich
+								</label>
+								<label>
+									<input type="radio" bind:group={isPublic} value={false} />
+									Privat
+								</label>
+							</div>
 						</div>
 
 						<div class="field-row">
