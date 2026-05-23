@@ -11,6 +11,12 @@ group_recipes = Table(
     Column('recipe_id', BigInteger, ForeignKey('recipes.id'), primary_key=True)
 )
 
+recipe_tags = Table(
+    'recipe_tags', Base.metadata,
+    Column('recipe_id', BigInteger, ForeignKey('recipes.id'), primary_key=True),
+    Column('tag_id', BigInteger, ForeignKey('tags.id'), primary_key=True)
+)
+
 # 1. users [cite: 2, 3]
 class User(Base):
     """Benutzertabelle – hier könnt ihr weitere Felder ergänzen."""
@@ -37,14 +43,16 @@ class Recipe(Base):
     prep_time_minutes = Column(Integer)
     servings = Column(Integer)
     difficulty = Column(String(50)) # ENUM/VARCHAR
+    category = Column(String(100), nullable=True)
     is_public = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Verknüpfungen (Relationships)
     owner = relationship("User", back_populates="recipes")
-    ingredients = relationship("RecipeIngredient", back_populates="recipe")
-    steps = relationship("RecipeStep", back_populates="recipe")
-    ratings = relationship("RecipeRating", back_populates="recipe")
+    ingredients = relationship("RecipeIngredient", back_populates="recipe", cascade="all, delete-orphan")
+    steps = relationship("RecipeStep", back_populates="recipe", cascade="all, delete-orphan")
+    ratings = relationship("RecipeRating", back_populates="recipe", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary=recipe_tags, back_populates="recipes")
 
 # 3. recipe_ingredients [cite: 6, 7]
 class RecipeIngredient(Base):
@@ -81,7 +89,16 @@ class RecipeRating(Base):
     recipe = relationship("Recipe", back_populates="ratings")
     user = relationship("User", back_populates="ratings")
 
-# 6. groups [cite: 35-38]
+# 6. tags
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+
+    recipes = relationship("Recipe", secondary=recipe_tags, back_populates="tags")
+
+# 7. groups [cite: 35-38]
 class Group(Base):
     __tablename__ = "groups"
     

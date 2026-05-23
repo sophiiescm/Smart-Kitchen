@@ -32,6 +32,17 @@ class StepResponse(StepBase):
 
 
 # ==========================================
+# TAG SCHEMAS
+# ==========================================
+class TagBase(BaseModel):
+    name: str
+
+class TagResponse(TagBase):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+# ==========================================
 # USER SCHEMAS
 # ==========================================
 class UserCreate(BaseModel):
@@ -60,12 +71,26 @@ class RecipeBase(BaseModel):
     prep_time_minutes: Optional[int] = None
     servings: Optional[int] = None
     difficulty: Optional[str] = None
+    category: Optional[str] = None
     is_public: bool = False
 
 class RecipeCreate(RecipeBase):
     # Beim Erstellen schickt das Frontend direkt Listen für Zutaten und Schritte mit
     ingredients: List[IngredientCreate] = []
     steps: List[StepCreate] = []
+    tags: List[str] = []
+
+class RecipeUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    prep_time_minutes: Optional[int] = None
+    servings: Optional[int] = None
+    difficulty: Optional[str] = None
+    category: Optional[str] = None
+    is_public: Optional[bool] = None
+    ingredients: Optional[List[IngredientCreate]] = None
+    steps: Optional[List[StepCreate]] = None
+    tags: Optional[List[str]] = None
 
 # ==========================================
 # RECIPE SCHEMAS 
@@ -81,6 +106,7 @@ class RecipeResponse(RecipeBase):
     
     ingredients: List[IngredientResponse] = []
     steps: List[StepResponse] = []
+    tags: List[TagResponse] = []
     
     model_config = {"from_attributes": True}
 
@@ -116,9 +142,5 @@ class GroupResponse(BaseModel):
 # ==========================================
 # AUTH SCHEMAS (Neu eingefügt für Phase 1)
 # ==========================================
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
 class TokenData(BaseModel):
     username: Optional[str] = None
