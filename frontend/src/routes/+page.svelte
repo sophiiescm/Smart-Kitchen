@@ -1,42 +1,65 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { getCurrentUser, getMyRecipes, logout } from '$lib/api';
-	import { goto } from '$app/navigation';
 
-	type Recipe = {
-		id: number;
-		title: string;
-		description: string;
-		category?: string;
-		prep_time_minutes?: number;
-		average_rating?: number;
-		rating_count?: number;
-	};
+    import { goto } from '$app/navigation';
 
-	let username = 'Küchenchef';
-	let errorMessage = '';
-	let recipes: Recipe[] = [];
-	let loading = true;
+    import { register } from '$lib/api';
 
-	onMount(async () => {
-		try {
-			const profile = await getCurrentUser();
-			username = profile.username;
 
-			recipes = await getMyRecipes();
-		} catch (error) {
-			console.error(error);
-			logout();
-			goto('/auth/login');
-		} finally {
-			loading = false;
-		}
-	});
 
-	function handleLogout() {
-		logout();
-		goto('/auth/login');
-	}
+let username = '';
+
+let email = '';
+
+let password = '';
+
+let passwordConfirm = '';
+
+let errorMessage = '';
+
+let isLoading = false;
+
+
+
+        if (password !== passwordConfirm) {
+
+            errorMessage = 'Passwörter stimmen nicht überein.';
+
+            return;
+
+        }
+
+
+
+        isLoading = true;
+
+
+
+        try {
+
+            await register(username, email, password);
+
+            await goto('/auth/login');
+
+        } catch (error: unknown) {
+
+            if (error instanceof Error) {
+
+                errorMessage = error.message;
+
+            } else {
+
+                errorMessage = 'Registrierung fehlgeschlagen. Bitte versuche es erneut.';
+
+            }
+
+        } finally {
+
+            isLoading = false;
+
+        }
+
+   
+
 </script>
 
 <div class="dashboard-container">

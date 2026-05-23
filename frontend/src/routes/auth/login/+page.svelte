@@ -1,26 +1,36 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { login } from '$lib/api';
+    import { goto } from '$app/navigation';
+    import { login } from '$lib/api';
 
-let username = '';
-let password = '';
-let errorMessage = '';
-let isLoading = false;
-		isLoading = true;
+    let username = '';
+    let password = '';
+    let errorMessage = '';
+    let isLoading = false;
 
-		try {
-			await login(username, password);
-			await goto('/');
-		} catch (error: unknown) {
-			if (error instanceof Error) {
-				errorMessage = error.message;
-			} else {
-				errorMessage = 'Login fehlgeschlagen. Bitte versuche es erneut.';
-			}
-		} finally {
-			isLoading = false;
-		}
-	}
+    // 🔍 DIESE FUNKTION FEHLT ODER SCHLIESST NICHT RICHTIG:
+    async function handleLogin() {
+        errorMessage = '';
+        isLoading = true;
+
+        try {
+            // Hier drin ist 'await' jetzt absolut erlaubt!
+            const data = await login(username, password);
+            
+            if (data && data.access_token) {
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('username', username);
+                await goto('/');
+            }
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else {
+                errorMessage = 'Login fehlgeschlagen.';
+            }
+        } finally {
+            isLoading = false;
+        }
+    }
 </script>
 
 <div class="auth-container">

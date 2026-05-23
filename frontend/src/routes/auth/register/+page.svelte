@@ -1,34 +1,38 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { register } from '$lib/api';
+    import { goto } from '$app/navigation';
+    import { register } from '$lib/api';
 
-let username = '';
-let email = '';
-let password = '';
-let passwordConfirm = '';
-let errorMessage = '';
-let isLoading = false;
+    let username = '';
+    let email = '';
+    let password = '';
+    let passwordConfirm = '';
+    let errorMessage = '';
+    let isLoading = false;
 
-		if (password !== passwordConfirm) {
-			errorMessage = 'Passwörter stimmen nicht überein.';
-			return;
-		}
+    // 🔍 KORREKTUR: Alles sauber in eine asynchrone Funktion verpackt
+    async function handleRegister() {
+        errorMessage = ''; // Fehler bei neuem Versuch zurücksetzen
 
-		isLoading = true;
+        if (password !== passwordConfirm) {
+            errorMessage = 'Passwörter stimmen nicht überein.';
+            return;
+        }
 
-		try {
-			await register(username, email, password);
-			await goto('/auth/login');
-		} catch (error: unknown) {
-			if (error instanceof Error) {
-				errorMessage = error.message;
-			} else {
-				errorMessage = 'Registrierung fehlgeschlagen. Bitte versuche es erneut.';
-			}
-		} finally {
-			isLoading = false;
-		}
-	}
+        isLoading = true;
+
+        try {
+            await register(username, email, password);
+            await goto('/auth/login');
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else {
+                errorMessage = 'Registrierung fehlgeschlagen. Bitte versuche es erneut.';
+            }
+        } finally {
+            isLoading = false;
+        }
+    }
 </script>
 
 <div class="auth-container">
