@@ -134,7 +134,6 @@
 									src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200'}
 									alt={recipe.title}
 								/>
-
 								<div class="image-overlay"></div>
 							</div>
 
@@ -174,38 +173,40 @@
 		background: #04070a;
 		color: white;
 	}
-
-	.dashboard-container {
-		position: relative;
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+			gap: 18px;
 		min-height: 100vh;
 		overflow: hidden;
 		background: #04070a;
-	}
-
-	.background-blur {
-		position: fixed;
-		border-radius: 9999px;
-		filter: blur(120px);
-		pointer-events: none;
+			display: block;
+			border-radius: 16px;
+			overflow: hidden;
+			text-decoration: none;
+			color: inherit;
+			background: rgba(255,255,255,0.03);
+			border: 1px solid rgba(255,255,255,0.04);
+			transition: transform 0.16s, box-shadow 0.16s;
 	}
 
 	.blur-1 {
-		top: -200px;
-		left: -150px;
+			transform: translateY(-6px);
+			box-shadow: 0 12px 30px rgba(2,6,23,0.6);
 		width: 500px;
 		height: 500px;
 		background: rgba(34, 197, 94, 0.15);
-	}
-
-	.blur-2 {
-		bottom: -200px;
+			position: relative;
+			width: 100%;
+			height: 160px;
+			overflow: hidden;
+			flex-shrink: 0;
 		right: -150px;
 		width: 500px;
 		height: 500px;
-		background: rgba(16, 185, 129, 0.12);
-	}
-
-	/* NAVIGATION */
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			display: block;
 
 	.glass-nav {
 		position: sticky;

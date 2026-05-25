@@ -8,7 +8,7 @@
 	let time = '';
 	let image = '';
 	let tags = '';
-	let isPublic: boolean | string = true;
+	let isPublic: string = 'true';
 	let errorMessage = '';
 	let isSaving = false;
 
@@ -148,12 +148,12 @@
 <div class="field field-inline">
 				<label>Rezept sichtbar</label>
 				<div class="toggle-group">
-					<label class="radio-pill">
-						<input type="radio" bind:group={isPublic} value={true} />
-						Öffentlich
-					</label>
-					<label class="radio-pill">
-									<input type="radio" bind:group={isPublic} value={false} />
+								<label class="radio-pill">
+									<input type="radio" bind:group={isPublic} value="true" />
+									Öffentlich
+								</label>
+								<label class="radio-pill">
+									<input type="radio" bind:group={isPublic} value="false" />
 									Privat
 								</label>
 							</div>
@@ -505,6 +505,9 @@
 	.radio-pill {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
+		flex: 1 1 0;
+		min-width: 140px;
 		gap: 10px;
 		padding: 12px 18px;
 		border-radius: 16px;
@@ -512,7 +515,7 @@
 		background: rgba(255, 255, 255, 0.05);
 		color: white;
 		cursor: pointer;
-		transition: background 0.2s, border-color 0.2s;
+		transition: background 0.2s, border-color 0.2s, transform 0.08s;
 	}
 
 	.radio-pill:hover {
