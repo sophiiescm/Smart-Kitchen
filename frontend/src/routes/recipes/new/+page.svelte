@@ -8,7 +8,7 @@
 	let time = '';
 	let image = '';
 	let tags = '';
-	let isPublic = true;
+	let isPublic: boolean | string = true;
 	let errorMessage = '';
 	let isSaving = false;
 
@@ -42,7 +42,7 @@
 			prep_time_minutes: time ? Number(time) : undefined,
 			servings: undefined,
 			difficulty: undefined,
-			is_public: isPublic,
+			is_public: isPublic === true || isPublic === 'true',
 			ingredients: ingredients
 				.filter((item) => item.trim().length > 0)
 				.map((name) => ({ name, amount: undefined, unit: undefined })),
@@ -145,14 +145,14 @@
 							<p class="hint">Getrennt durch Kommas eingeben.</p>
 						</div>
 
-						<div class="field">
-							<label>Rezept sichtbar</label>
-							<div class="toggle-group">
-								<label>
-									<input type="radio" bind:group={isPublic} value={true} />
-									Öffentlich
-								</label>
-								<label>
+<div class="field field-inline">
+				<label>Rezept sichtbar</label>
+				<div class="toggle-group">
+					<label class="radio-pill">
+						<input type="radio" bind:group={isPublic} value={true} />
+						Öffentlich
+					</label>
+					<label class="radio-pill">
 									<input type="radio" bind:group={isPublic} value={false} />
 									Privat
 								</label>
@@ -482,6 +482,45 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 16px;
+	}
+
+	.field-inline {
+		display: flex;
+		align-items: center;
+		gap: 22px;
+	}
+
+	.field-inline > label {
+		margin-bottom: 0;
+		white-space: nowrap;
+	}
+
+	.toggle-group {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 14px;
+		align-items: center;
+	}
+
+	.radio-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 18px;
+		border-radius: 16px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(255, 255, 255, 0.05);
+		color: white;
+		cursor: pointer;
+		transition: background 0.2s, border-color 0.2s;
+	}
+
+	.radio-pill:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.radio-pill input {
+		accent-color: #4ade80;
 	}
 
 	/* FIELDS */
