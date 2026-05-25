@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+.svelte-kit/
+build/
+dist/
+*.local
+Notizen.md
+
+# Projektdokumente & lokale Hilfsdateien (nicht auf GitHub)
+*.pdf
+CLAUDE.md

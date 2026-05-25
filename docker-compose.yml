@@ -1,0 +1,74 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # Datenbank
+  # ─────────────────────────────────────────────
+  db:
+    image: mysql:8.4
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}          # dedicated app-user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}  # Passwort für app-user
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "root", "--password=${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - app-network
+
+  # ─────────────────────────────────────────────
+  # Backend (FastAPI)
+  # ─────────────────────────────────────────────
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      # dedicated user statt root
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      SECRET_KEY: ${SECRET_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app   # Hot-Reload beim Entwickeln
+    networks:
+      - app-network
+
+  # ─────────────────────────────────────────────
+  # Frontend (SvelteKit)
+  # ─────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    env_file:
+      - .env
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app           # Hot-Reload beim Entwickeln
+      - /app/node_modules         # node_modules im Container behalten
+    networks:
+      - app-network
+
+# ─────────────────────────────────────────────
+# Volumes & Netzwerke
+# ─────────────────────────────────────────────
+volumes:
+  db-data:
+
+networks:
+  app-network:
+    driver: bridge
