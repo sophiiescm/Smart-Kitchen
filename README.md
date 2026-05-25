@@ -1,63 +1,105 @@
-# Projekt-Template – SvelteKit + FastAPI + MySQL
+# Smart Kitchen
 
-Startpunkt für euer Semester-4-Projekt. Enthält eine lauffähige Boilerplate mit:
+Smart Kitchen ist eine moderne Rezeptplattform mit einem SvelteKit-Frontend und einem FastAPI-Backend. Nutzer können sich registrieren, Rezepte erstellen, öffentliche oder private Rezepte verwalten und Rezepte bewerten.
 
-- **Backend**: FastAPI + SQLAlchemy + MySQL + JWT-Authentifizierung (Argon2)
-- **Frontend**: SvelteKit mit API-Hilfsfunktionen
-- **Infrastruktur**: Docker Compose für alle Services
+## Technologie-Stack
 
-## Quickstart
+- **Frontend:** SvelteKit, TypeScript, Tailwind-ähnliches UI-Design
+- **Backend:** FastAPI, SQLAlchemy, JWT-Authentifizierung
+- **Datenbank:** MySQL
+- **Infrastruktur:** Docker Compose
+
+## Features
+
+- Benutzerregistrierung und Login
+- JWT-basierte Authentifizierung
+- Rezept-Erstellung mit Zutaten, Schritten, Kategorie, Tags und Sichtbarkeit
+- Öffentliche Rezeptliste und einzelne Rezeptdetailseiten
+- Bewertungssystem für Rezepte
+- Eigene Rezepte verwalten
+
+## Schnellstart
 
 ```bash
-# 1. .env aus Vorlage erstellen und Werte anpassen
 cp .env.example .env
 
-# 2. SECRET_KEY generieren (für JWT) – z.B. mit:
+# SECRET_KEY generieren und in .env einfügen
 openssl rand -hex 32
-# Den Output in die `.env`-Datei als `SECRET_KEY` eintragen.
 
-# 3. Alle Services bauen und starten
+# Container bauen und starten
 docker compose up -d --build
-
-# 4. Fertig!
-#    Frontend:  http://localhost:5173
-#    Backend:   http://localhost:8000
-#    API-Docs:  http://localhost:8000/docs
 ```
+
+Dann im Browser öffnen:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+- API-Dokumentation: `http://localhost:8000/docs`
+
+## Umgebungsvariablen
+
+Erstelle ` .env` basierend auf `.env.example` und passe die Werte an.
+
+Wichtige Variablen:
+
+- `MYSQL_ROOT_PASSWORD` – Root-Passwort für die MySQL-Datenbank
+- `MYSQL_DATABASE` – Datenbankname
+- `MYSQL_USER` – App-Benutzername
+- `MYSQL_PASSWORD` – App-Passwort
+- `DATABASE_URL` – Optional: vollständige DB-Verbindung
+- `SECRET_KEY` – Schlüssel für JWT-Signaturen
+- `ALGORITHM` – JWT-Algorithmus (standardmäßig `HS256`)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` – Ablaufzeit des Tokens in Minuten
+
+## Architektur
+
+Die App besteht aus drei Kernkomponenten:
+
+- `frontend/` – SvelteKit-UI, ruft API-Endpunkte auf
+- `backend/` – FastAPI-Server, verarbeitet Authentifizierung und Rezeptlogik
+- `db` – MySQL-Datenbank, speichert Nutzer, Rezepte, Zutaten, Schritte, Bewertungen und Tags
+
+Siehe auch [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Projektstruktur
 
-```
-projekt-template/
+```text
+Smart-Kitchen-main/
 ├── backend/
-│   ├── main.py          # FastAPI-App (Endpoints)
-│   ├── auth.py          # JWT + Argon2 Passwort-Hashing
-│   ├── database.py      # SQLAlchemy Engine + Session
-│   ├── models.py        # ORM-Modelle (User + eure Tabellen)
-│   ├── schemas.py       # Pydantic-Schemas (Request/Response)
-│   ├── requirements.txt # Python-Abhängigkeiten
-│   └── Dockerfile       # Bauanleitung für Backend-Container
+│   ├── main.py
+│   ├── auth.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── lib/api.ts          # API-Hilfsfunktionen (login, fetch...)
-│   │   └── routes/+page.svelte # Startseite
-│   ├── package.json            # NodeJS-Abhängigkeiten
-│   └── Dockerfile              # Bauanleitung für Frontend-Container
-├── docker-compose.yml          # Orchestrierung aller Container
-├── .env.example                # Vorlage für Umgebungsvariablen
-└── .gitignore                  # Git-Ignore-Datei
+│   │   ├── lib/api.ts
+│   │   └── routes/
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml
+├── .env.example
+└── README.md
 ```
 
-## Wo anfangen?
+## Testprotokoll
 
-1. **Backend erweitern**: Eigene Modelle in `backend/models.py` anlegen, Pydantic-Schemas für API in `backend/schemas.py` anpassen, Endpoints in `backend/main.py` anlegen. Testen mit Swagger UI (`http://localhost:8000/docs`)
-2. **Frontend erweitern**: API-Aufrufe (Kommunikation Svelte <-> Backend) in `frontend/src/lib/api.ts`, UI in `frontend/src/routes/`
-3. **Datenbank**: Tabellen werden beim Start automatisch angelegt (`Base.metadata.create_all`)
+Für manuelle Prüfungen siehe [`TESTING.md`](TESTING.md).
 
-## Authentifizierung testen
+## API-Übersicht
 
-Die Swagger UI unter `http://localhost:8000/docs` hat einen eingebauten **Authorize**-Button:
+- `POST /auth/register` – Benutzer registrieren
+- `POST /token` – Login und JWT erhalten
+- `GET /my-profile` – eigenes Profil abrufen
+- `POST /recipes` – Rezept anlegen
+- `GET /recipes` – öffentliche Rezepte erhalten
+- `GET /recipes/{id}` – Rezeptdetail
+- `POST /recipes/{id}/ratings` – Rezept bewerten
 
-1. Benutzer anlegen: `POST /auth/register`
-2. Einloggen: Authorize-Button klicken → username + password eingeben
-3. Geschützte Endpoints wie `GET /my-profile` aufrufen
+## Betriebshinweise
+
+- Das Frontend ruft das Backend unter `http://localhost:8000` auf.
+- Der `SECRET_KEY` muss in `.env` gesetzt sein, damit JWT-Token funktionieren.
+- Private Rezepte sind nur für den Ersteller sichtbar.
