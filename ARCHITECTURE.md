@@ -1,4 +1,5 @@
 # Architekturdiagramm
+*Antoniaa*
 
 Diese Datei beschreibt die Architektur von Smart Kitchen und die wichtigsten Komponenten.
 
