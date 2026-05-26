@@ -72,6 +72,7 @@ class RecipeBase(BaseModel):
     servings: Optional[int] = None
     difficulty: Optional[str] = None
     category: Optional[str] = None
+    image_url: Optional[str] = None
     is_public: bool = False
 
 class RecipeCreate(RecipeBase):
@@ -87,6 +88,7 @@ class RecipeUpdate(BaseModel):
     servings: Optional[int] = None
     difficulty: Optional[str] = None
     category: Optional[str] = None
+    image_url: Optional[str] = None
     is_public: Optional[bool] = None
     ingredients: Optional[List[IngredientCreate]] = None
     steps: Optional[List[StepCreate]] = None

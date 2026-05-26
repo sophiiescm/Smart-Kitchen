@@ -162,6 +162,7 @@ def create_recipe(
         servings=data.servings,
         difficulty=data.difficulty,
         category=data.category,
+        image_url=data.image_url,
         is_public=data.is_public,
         user_id=user.id
     )
@@ -305,10 +306,24 @@ def list_public_recipes(
     tag: Optional[str] = None,
     difficulty: Optional[str] = None,
     max_time: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_username: Annotated[Optional[str], Depends(get_current_user_optional)] = None,
 ):
-    """🌐 Öffentliche Rezepte abrufen und optional filtern."""
-    query = db.query(Recipe).filter(Recipe.is_public.is_(True))
+    """🌐 Öffentliche Rezepte abrufen und optional filtern.
+
+    Eingeloggte Nutzer sehen zusätzlich ihre eigenen privaten Rezepte.
+    """
+    # Basis-Filter: öffentliche Rezepte ODER (eingeloggt) eigene private Rezepte
+    if current_username:
+        owner = db.query(User).filter(User.username == current_username).first()
+        if owner:
+            query = db.query(Recipe).filter(
+                or_(Recipe.is_public.is_(True), Recipe.user_id == owner.id)
+            )
+        else:
+            query = db.query(Recipe).filter(Recipe.is_public.is_(True))
+    else:
+        query = db.query(Recipe).filter(Recipe.is_public.is_(True))
 
     if q:
         search_term = f"%{q}%"
@@ -329,6 +344,52 @@ def list_public_recipes(
         query = query.join(Recipe.tags).filter(Tag.name.ilike(tag))
 
     recipes = query.distinct().all()
+    recipes_out = []
+    for recipe in recipes:
+        rating_stats = db.query(
+            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+            func.count(RecipeRating.id).label("count")
+        ).filter(RecipeRating.recipe_id == recipe.id).first()
+
+        recipe_data = RecipeResponse.model_validate(recipe)
+        recipe_data.average_rating = round(rating_stats.average, 1)
+        recipe_data.rating_count = rating_stats.count
+        recipes_out.append(recipe_data)
+
+    return recipes_out
+
+
+def _build_tag_objects(db: Session, tag_names: list[str]) -> list[Tag]:
+    tags: list[Tag] = []
+    for tag_name in tag_names:
+        normalized_name = tag_name.strip()
+        if not normalized_name:
+            continue
+        existing_tag = db.query(Tag).filter(Tag.name == normalized_name).first()
+        if existing_tag:
+            tags.append(existing_tag)
+        else:
+            new_tag = Tag(name=normalized_name)
+            db.add(new_tag)
+            db.commit()
+            db.refresh(new_tag)
+            tags.append(new_tag)
+    return tags
+
+
+# WICHTIG: /recipes/mine MUSS vor /recipes/{recipe_id} stehen,
+# sonst versucht FastAPI "mine" in int zu konvertieren und liefert einen 422 Fehler.
+@app.get("/recipes/mine", response_model=list[RecipeResponse])
+def get_my_recipes(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+):
+    """🌐 Eigene Rezepte abrufen (inklusive privater Rezepte)."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    recipes = db.query(Recipe).filter(Recipe.user_id == user.id).all()
     recipes_out = []
     for recipe in recipes:
         rating_stats = db.query(
@@ -378,50 +439,6 @@ def get_single_recipe(
     return recipe_data
 
 
-def _build_tag_objects(db: Session, tag_names: list[str]) -> list[Tag]:
-    tags: list[Tag] = []
-    for tag_name in tag_names:
-        normalized_name = tag_name.strip()
-        if not normalized_name:
-            continue
-        existing_tag = db.query(Tag).filter(Tag.name == normalized_name).first()
-        if existing_tag:
-            tags.append(existing_tag)
-        else:
-            new_tag = Tag(name=normalized_name)
-            db.add(new_tag)
-            db.commit()
-            db.refresh(new_tag)
-            tags.append(new_tag)
-    return tags
-
-
-@app.get("/recipes/mine", response_model=list[RecipeResponse])
-def get_my_recipes(
-    current_username: Annotated[str, Depends(get_current_user)],
-    db: Session = Depends(get_db)
-):
-    """🌐 Eigene Rezepte abrufen (inklusive privater Rezepte)."""
-    user = db.query(User).filter(User.username == current_username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
-
-    recipes = db.query(Recipe).filter(Recipe.user_id == user.id).all()
-    recipes_out = []
-    for recipe in recipes:
-        rating_stats = db.query(
-            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-            func.count(RecipeRating.id).label("count")
-        ).filter(RecipeRating.recipe_id == recipe.id).first()
-
-        recipe_data = RecipeResponse.model_validate(recipe)
-        recipe_data.average_rating = round(rating_stats.average, 1)
-        recipe_data.rating_count = rating_stats.count
-        recipes_out.append(recipe_data)
-
-    return recipes_out
-
-
 @app.put("/recipes/{recipe_id}", response_model=RecipeResponse)
 def update_recipe(
     recipe_id: int,
@@ -453,6 +470,8 @@ def update_recipe(
         recipe.difficulty = data.difficulty
     if data.category is not None:
         recipe.category = data.category
+    if data.image_url is not None:
+        recipe.image_url = data.image_url
     if data.is_public is not None:
         recipe.is_public = data.is_public
 

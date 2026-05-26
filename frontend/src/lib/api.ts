@@ -108,6 +108,25 @@ export async function fetchPublic<T>(path: string): Promise<T> {
 	return await response.json() as T;
 }
 
+/**
+ * Führt einen GET-Request aus und hängt das JWT als Authorization-Header an,
+ * FALLS eines vorhanden ist. So funktioniert die Anfrage für anonyme Nutzer
+ * weiterhin, aber bei eingeloggten Nutzern erkennt das Backend den Besitzer
+ * privater Rezepte.
+ */
+export async function fetchOptionalAuth<T>(path: string): Promise<T> {
+	const token = getToken();
+	const headers: Record<string, string> = {};
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+	const response = await fetch(`${API_BASE}${path}`, { headers });
+	if (!response.ok) {
+		throw new Error(`Fehler beim Laden der Ressource: ${response.status} ${response.statusText}`);
+	}
+	return await response.json() as T;
+}
+
 export async function register(username: string, email: string, password: string): Promise<void> {
 	const response = await fetch(`${API_BASE}/auth/register`, {
 		method: 'POST',
@@ -118,12 +137,33 @@ export async function register(username: string, email: string, password: string
 	});
 
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Registrierung fehlgeschlagen: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
+		// Versuche FastAPI-typische JSON-Fehlerantwort zu parsen
+		let detail = '';
+		try {
+			const body = await response.json();
+			if (typeof body?.detail === 'string') {
+				detail = body.detail;
+			} else if (Array.isArray(body?.detail)) {
+				// Pydantic-Validation-Fehler
+				detail = body.detail
+					.map((err: any) => err?.msg ?? JSON.stringify(err))
+					.join(', ');
+			}
+		} catch {
+			// kein JSON, ignorieren
+		}
+
+		if (response.status === 409) {
+			throw new Error(detail || 'Nutzername oder E-Mail bereits vergeben.');
+		}
+		if (response.status === 400 || response.status === 422) {
+			throw new Error(detail || 'Bitte überprüfe deine Eingaben.');
+		}
+		throw new Error(detail || `Registrierung fehlgeschlagen (${response.status}).`);
 	}
 }
 
-export async function getCurrentUser(): Promise<{ username: string; email: string }> {
+export async function getCurrentUser(): Promise<{ id: number; username: string; email: string }> {
 	return await fetchProtected('/my-profile');
 }
 
@@ -150,7 +190,9 @@ export async function getMyRecipes(): Promise<any[]> {
 }
 
 export async function getRecipe(recipeId: number): Promise<any> {
-	return await fetchPublic<any>(`/recipes/${recipeId}`);
+	// Token mitschicken falls eingeloggt — sonst sieht der Backend-Endpoint
+	// uns nicht als Besitzer und liefert 403 für eigene private Rezepte.
+	return await fetchOptionalAuth<any>(`/recipes/${recipeId}`);
 }
 
 export async function createRecipe(data: {
@@ -175,12 +217,14 @@ export async function createRecipe(data: {
 }
 
 export async function rateRecipe(recipeId: number, rating: number): Promise<any> {
+	// Backend RatingCreate Schema verlangt recipe_id im Body (zusätzlich
+	// zum Pfad-Parameter). Beides mitschicken sonst kommt 422.
 	return await fetchProtected<any>(`/recipes/${recipeId}/ratings`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json'
 		},
-		body: JSON.stringify({ rating })
+		body: JSON.stringify({ recipe_id: recipeId, rating })
 	});
 }
 
@@ -191,5 +235,11 @@ export async function updateRecipe(recipeId: number, data: any): Promise<any> {
 			'Content-Type': 'application/json'
 		},
 		body: JSON.stringify(data)
+	});
+}
+
+export async function deleteRecipe(recipeId: number): Promise<void> {
+	await fetchProtected<any>(`/recipes/${recipeId}`, {
+		method: 'DELETE'
 	});
 }

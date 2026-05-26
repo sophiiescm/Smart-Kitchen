@@ -2,18 +2,21 @@
 	import { goto } from '$app/navigation';
 	import { createRecipe } from '$lib/api';
 
-	let title = '';
-	let description = '';
-	let category = '';
-	let time = '';
-	let image = '';
-	let tags = '';
-	let isPublic: string = 'true';
-	let errorMessage = '';
-	let isSaving = false;
+	// In runes mode (vom svelte.config.js erzwungen) MÜSSEN reaktive
+	// Werte mit $state() deklariert werden, sonst aktualisiert sich die UI nicht.
+	let title = $state('');
+	let description = $state('');
+	let category = $state('');
+	let time = $state('');
+	let imageUrl = $state('');
+	let imagePreview = $state('');
+	let tags = $state('');
+	let isPublic = $state(true);
+	let errorMessage = $state('');
+	let isSaving = $state(false);
 
-	let ingredients: string[] = [''];
-	let steps: string[] = [''];
+	let ingredients = $state<string[]>(['']);
+	let steps = $state<string[]>(['']);
 
 	function addIngredient() {
 		ingredients = [...ingredients, ''];
@@ -31,24 +34,100 @@
 		steps = steps.filter((_, i) => i !== index);
 	}
 
+	/**
+	 * Bild auf max. 1280px Längsseite verkleinern und als JPEG mit ~80%
+	 * Qualität encodieren. Verhindert dass 5 MB Handyfotos als 7 MB Base64
+	 * in der DB landen.
+	 */
+	async function compressImage(file: File, maxSize = 1280, quality = 0.8): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => {
+				const img = new Image();
+				img.onload = () => {
+					let { width, height } = img;
+					if (width > maxSize || height > maxSize) {
+						const scale = Math.min(maxSize / width, maxSize / height);
+						width = Math.round(width * scale);
+						height = Math.round(height * scale);
+					}
+					const canvas = document.createElement('canvas');
+					canvas.width = width;
+					canvas.height = height;
+					const ctx = canvas.getContext('2d');
+					if (!ctx) {
+						reject(new Error('Canvas-Kontext nicht verfügbar.'));
+						return;
+					}
+					ctx.drawImage(img, 0, 0, width, height);
+					resolve(canvas.toDataURL('image/jpeg', quality));
+				};
+				img.onerror = () => reject(new Error('Bild konnte nicht geladen werden.'));
+				img.src = reader.result as string;
+			};
+			reader.onerror = () => reject(new Error('Bild konnte nicht gelesen werden.'));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	async function handleImageFile(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (!file) return;
+
+		// Hartes Limit auf 10 MB Originalgröße — wir komprimieren danach sowieso.
+		if (file.size > 10 * 1024 * 1024) {
+			errorMessage = 'Bild ist zu groß (max. 10 MB Originaldatei).';
+			target.value = '';
+			return;
+		}
+
+		try {
+			const dataUrl = await compressImage(file);
+			imageUrl = dataUrl;
+			imagePreview = dataUrl;
+			errorMessage = '';
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Bild konnte nicht verarbeitet werden.';
+		}
+	}
+
+	function clearImage() {
+		imageUrl = '';
+		imagePreview = '';
+	}
+
+	// Wenn der Nutzer eine URL eingibt, soll auch das Vorschaubild sich aktualisieren
+	function onImageUrlInput(value: string) {
+		imageUrl = value;
+		imagePreview = value;
+	}
+
 	async function submitRecipe() {
 		errorMessage = '';
+
+		if (!title.trim()) {
+			errorMessage = 'Bitte gib einen Titel ein.';
+			return;
+		}
+
 		isSaving = true;
 
 		const payload = {
-			title,
-			description,
-			category,
+			title: title.trim(),
+			description: description.trim(),
+			category: category || undefined,
 			prep_time_minutes: time ? Number(time) : undefined,
 			servings: undefined,
 			difficulty: undefined,
-			is_public: isPublic === true || isPublic === 'true',
+			image_url: imageUrl || undefined,
+			is_public: isPublic === true,
 			ingredients: ingredients
 				.filter((item) => item.trim().length > 0)
-				.map((name) => ({ name, amount: undefined, unit: undefined })),
+				.map((name) => ({ name: name.trim(), amount: undefined, unit: undefined })),
 			steps: steps
 				.filter((item) => item.trim().length > 0)
-				.map((instruction, index) => ({ step_number: index + 1, instruction })),
+				.map((instruction, index) => ({ step_number: index + 1, instruction: instruction.trim() })),
 			tags: tags
 				.split(',')
 				.map((tag) => tag.trim())
@@ -56,8 +135,13 @@
 		};
 
 		try {
-			await createRecipe(payload);
-			goto('/recipes');
+			const created = await createRecipe(payload);
+			// Direkt zur Detailseite des neuen Rezepts, statt zur Liste:
+			if (created?.id) {
+				await goto(`/recipes/${created.id}`);
+			} else {
+				await goto('/recipes');
+			}
 		} catch (error: unknown) {
 			if (error instanceof Error) {
 				errorMessage = error.message;
@@ -102,22 +186,32 @@
 			<p>Teile dein Lieblingsgericht mit der Community.</p>
 		</div>
 
+		<!-- Error Message -->
+		{#if errorMessage}
+			<div class="error-box" role="alert">
+				⚠ {errorMessage}
+			</div>
+		{/if}
+
 		<!-- Form -->
 		<div class="form-wrapper">
 
 			<!-- Main Info Card -->
 			<div class="glass-card">
 				<div class="card-header">
-					<h2>Grundinformationen</h2>
-					<p>Titel, Kategorie und weitere Details</p>
+					<div>
+						<h2>Grundinformationen</h2>
+						<p>Titel, Kategorie und weitere Details</p>
+					</div>
 				</div>
 
 				<div class="two-col">
 					<!-- Left Column -->
 					<div class="field-group">
 						<div class="field">
-							<label>Titel</label>
+							<label for="title-input">Titel</label>
 							<input
+								id="title-input"
 								bind:value={title}
 								type="text"
 								placeholder="z.B. Cremige Carbonara"
@@ -125,19 +219,22 @@
 						</div>
 
 						<div class="field">
-							<label>Kategorie</label>
-							<select bind:value={category}>
+							<label for="category-input">Kategorie</label>
+							<select id="category-input" bind:value={category}>
 								<option value="">Kategorie wählen</option>
-								<option>Pasta</option>
-								<option>Dessert</option>
-								<option>Frühstück</option>
-								<option>Vegetarisch</option>
+								<option value="Pasta">Pasta</option>
+								<option value="Dessert">Dessert</option>
+								<option value="Frühstück">Frühstück</option>
+								<option value="Vegan">Vegan</option>
+								<option value="Vegetarisch">Vegetarisch</option>
+								<option value="Fleisch">Fleisch</option>
 							</select>
 						</div>
 
 						<div class="field">
-							<label>Tags</label>
+							<label for="tags-input">Tags</label>
 							<input
+								id="tags-input"
 								bind:value={tags}
 								type="text"
 								placeholder="z. B. schnell, vegan, einfach"
@@ -145,49 +242,91 @@
 							<p class="hint">Getrennt durch Kommas eingeben.</p>
 						</div>
 
-<div class="field field-inline">
-				<label>Rezept sichtbar</label>
-				<div class="toggle-group">
-								<label class="radio-pill">
-									<input type="radio" bind:group={isPublic} value="true" />
-									Öffentlich
-								</label>
-								<label class="radio-pill">
-									<input type="radio" bind:group={isPublic} value="false" />
-									Privat
-								</label>
+						<!-- Visibility Toggle (echtes Toggle statt Radio) -->
+						<div class="field">
+							<label for="visibility-toggle">Rezept sichtbar</label>
+							<div class="toggle-group" id="visibility-toggle">
+								<button
+									type="button"
+									class="toggle-btn"
+									class:active={isPublic === true}
+									onclick={() => (isPublic = true)}
+								>
+									🌐 Öffentlich
+								</button>
+								<button
+									type="button"
+									class="toggle-btn"
+									class:active={isPublic === false}
+									onclick={() => (isPublic = false)}
+								>
+									🔒 Privat
+								</button>
 							</div>
 						</div>
 
 						<div class="field-row">
 							<div class="field">
-								<label>Kochzeit (Min)</label>
+								<label for="time-input">Kochzeit (Min)</label>
 								<input
+									id="time-input"
 									bind:value={time}
 									type="number"
 									placeholder="30"
-								/>
-							</div>
-
-							<div class="field">
-								<label>Bild URL</label>
-								<input
-									bind:value={image}
-									type="text"
-									placeholder="https://..."
 								/>
 							</div>
 						</div>
 					</div>
 
 					<!-- Right Column -->
-					<div class="field">
-						<label>Beschreibung</label>
-						<textarea
-							bind:value={description}
-							rows="9"
-							placeholder="Beschreibe dein Rezept..."
-						></textarea>
+					<div class="field-group">
+						<div class="field">
+							<label for="desc-input">Beschreibung</label>
+							<textarea
+								id="desc-input"
+								bind:value={description}
+								rows="5"
+								placeholder="Beschreibe dein Rezept..."
+							></textarea>
+						</div>
+
+						<!-- Image Upload -->
+						<div class="field">
+							<label>Bild</label>
+							<div class="image-uploader">
+								{#if imagePreview}
+									<div class="image-preview">
+										<img src={imagePreview} alt="Vorschau" />
+										<button type="button" class="image-remove" onclick={clearImage} aria-label="Bild entfernen">
+											✕
+										</button>
+									</div>
+								{:else}
+									<label class="image-dropzone" for="image-file-input">
+										<div class="dropzone-icon">📷</div>
+										<div class="dropzone-text">Klicke um ein Bild auszuwählen</div>
+										<div class="dropzone-hint">JPG, PNG · max. 2 MB</div>
+									</label>
+								{/if}
+
+								<input
+									id="image-file-input"
+									type="file"
+									accept="image/*"
+									onchange={handleImageFile}
+									style="display: none;"
+								/>
+
+								<div class="image-url-row">
+									<input
+										type="text"
+										placeholder="...oder Bild-URL einfügen (https://...)"
+										value={imageUrl.startsWith('data:') ? '' : imageUrl}
+										oninput={(e) => onImageUrlInput((e.target as HTMLInputElement).value)}
+									/>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -274,8 +413,8 @@
 			<div class="submit-row">
 				<a href="/" class="cancel-btn">Abbrechen</a>
 
-				<button class="submit-btn" onclick={submitRecipe} type="button">
-					Rezept veröffentlichen →
+				<button class="submit-btn" onclick={submitRecipe} type="button" disabled={isSaving}>
+					{isSaving ? 'Wird gespeichert...' : 'Rezept veröffentlichen →'}
 				</button>
 			</div>
 
@@ -329,7 +468,6 @@
 	}
 
 	/* NAV */
-
 	.glass-nav {
 		position: sticky;
 		top: 0;
@@ -378,7 +516,6 @@
 	}
 
 	/* CONTENT */
-
 	.content {
 		position: relative;
 		z-index: 1;
@@ -388,9 +525,8 @@
 	}
 
 	/* HEADER */
-
 	.page-header {
-		margin-bottom: 50px;
+		margin-bottom: 30px;
 	}
 
 	.badge {
@@ -426,8 +562,18 @@
 		color: #94a3b8;
 	}
 
-	/* FORM */
+	/* ERROR BOX */
+	.error-box {
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid rgba(239, 68, 68, 0.2);
+		color: #fca5a5;
+		padding: 16px 20px;
+		border-radius: 16px;
+		margin-bottom: 24px;
+		font-size: 15px;
+	}
 
+	/* FORM */
 	.form-wrapper {
 		display: flex;
 		flex-direction: column;
@@ -435,7 +581,6 @@
 	}
 
 	/* GLASS CARD */
-
 	.glass-card {
 		border-radius: 32px;
 		background: rgba(255, 255, 255, 0.04);
@@ -465,7 +610,6 @@
 	}
 
 	/* GRID */
-
 	.two-col {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
@@ -484,54 +628,56 @@
 		gap: 16px;
 	}
 
-	.field-inline {
-		display: flex;
-		align-items: center;
-		gap: 22px;
-	}
-
-	.field-inline > label {
-		margin-bottom: 0;
-		white-space: nowrap;
-	}
-
+	/* TOGGLE BUTTONS (statt Radio) */
 	.toggle-group {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 14px;
-		align-items: center;
+		gap: 10px;
+		padding: 6px;
+		border-radius: 16px;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
-	.radio-pill {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex: 1 1 0;
-		min-width: 140px;
-		gap: 10px;
+	.toggle-btn {
+		flex: 1;
 		padding: 12px 18px;
-		border-radius: 16px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 12px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: #94a3b8;
+		cursor: pointer;
+		font-size: 14px;
+		font-weight: 600;
+		font-family: inherit;
+		transition: all 0.2s;
+	}
+
+	.toggle-btn:hover {
 		background: rgba(255, 255, 255, 0.05);
 		color: white;
-		cursor: pointer;
-		transition: background 0.2s, border-color 0.2s, transform 0.08s;
 	}
 
-	.radio-pill:hover {
-		background: rgba(255, 255, 255, 0.1);
-	}
-
-	.radio-pill input {
-		accent-color: #4ade80;
+	.toggle-btn.active {
+		background: rgba(34, 197, 94, 0.15);
+		color: #4ade80;
+		border-color: rgba(34, 197, 94, 0.3);
+		box-shadow: 0 4px 12px rgba(34, 197, 94, 0.15);
 	}
 
 	/* FIELDS */
-
 	.field {
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
+	}
+
+	.hint {
+		margin: 0;
+		font-size: 12px;
+		color: #64748b;
+		text-transform: none;
+		letter-spacing: normal;
+		font-weight: 400;
 	}
 
 	label {
@@ -588,8 +734,86 @@
 		line-height: 1.6;
 	}
 
-	/* LIST ITEMS */
+	/* IMAGE UPLOADER */
+	.image-uploader {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
 
+	.image-dropzone {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 32px 20px;
+		border: 2px dashed rgba(255, 255, 255, 0.1);
+		border-radius: 16px;
+		background: rgba(255, 255, 255, 0.02);
+		cursor: pointer;
+		transition: all 0.2s;
+		text-transform: none;
+		letter-spacing: normal;
+	}
+
+	.image-dropzone:hover {
+		border-color: rgba(74, 222, 128, 0.4);
+		background: rgba(34, 197, 94, 0.04);
+	}
+
+	.dropzone-icon {
+		font-size: 36px;
+	}
+
+	.dropzone-text {
+		color: #cbd5e1;
+		font-size: 14px;
+		font-weight: 600;
+	}
+
+	.dropzone-hint {
+		color: #64748b;
+		font-size: 12px;
+	}
+
+	.image-preview {
+		position: relative;
+		border-radius: 16px;
+		overflow: hidden;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		aspect-ratio: 16 / 9;
+	}
+
+	.image-preview img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.image-remove {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.7);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		color: white;
+		cursor: pointer;
+		font-size: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.image-url-row input {
+		font-size: 14px;
+	}
+
+	/* LIST ITEMS */
 	.list-group {
 		display: flex;
 		flex-direction: column;
@@ -646,7 +870,6 @@
 	}
 
 	/* ADD BUTTON */
-
 	.add-btn {
 		flex-shrink: 0;
 		padding: 12px 20px;
@@ -666,7 +889,6 @@
 	}
 
 	/* SUBMIT ROW */
-
 	.submit-row {
 		display: flex;
 		align-items: center;
@@ -705,13 +927,17 @@
 		box-shadow: 0 10px 30px rgba(22, 163, 74, 0.3);
 	}
 
-	.submit-btn:hover {
+	.submit-btn:hover:not(:disabled) {
 		transform: translateY(-2px);
 		box-shadow: 0 16px 40px rgba(22, 163, 74, 0.4);
 	}
 
-	/* MOBILE */
+	.submit-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
 
+	/* MOBILE */
 	@media (max-width: 900px) {
 		.glass-nav {
 			padding: 20px;

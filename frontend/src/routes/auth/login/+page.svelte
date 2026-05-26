@@ -2,10 +2,11 @@
     import { goto } from '$app/navigation';
     import { login } from '$lib/api';
 
-    let username = '';
-    let password = '';
-    let errorMessage = '';
-    let isLoading = false;
+    // In runes mode müssen reaktive Werte mit $state() deklariert werden.
+    let username = $state('');
+    let password = $state('');
+    let errorMessage = $state('');
+    let isLoading = $state(false);
 
     // 🔍 DIESE FUNKTION FEHLT ODER SCHLIESST NICHT RICHTIG:
     async function handleLogin() {

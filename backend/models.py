@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Boolean, Text, ForeignKey, Float, DateTime, Table, BigInteger, Integer
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -44,6 +45,8 @@ class Recipe(Base):
     servings = Column(Integer)
     difficulty = Column(String(50)) # ENUM/VARCHAR
     category = Column(String(100), nullable=True)
+    # LONGTEXT (4 GB) statt TEXT (64 KB), damit auch Base64-encodierte Bilder reinpassen
+    image_url = Column(LONGTEXT, nullable=True)
     is_public = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 

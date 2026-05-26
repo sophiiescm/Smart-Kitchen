@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     servings           INT,
     difficulty         VARCHAR(50),   -- z. B. 'einfach', 'mittel', 'schwer'
     category           VARCHAR(100),
+    image_url          LONGTEXT,      -- URL oder Base64 Data-URL für Rezeptbild (LONGTEXT für große Base64-Bilder)
     is_public          BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),

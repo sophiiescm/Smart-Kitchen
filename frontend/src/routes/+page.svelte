@@ -2,21 +2,26 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
 
-    // Variablen für das Dashboard
-    let username = 'Gast';
-    let recipes: any[] = [];
-    let loading = true;
+    // In runes mode müssen reaktive Werte mit $state() deklariert werden,
+    // sonst aktualisiert sich die UI nicht.
+    let username = $state('Gast');
+    let recipes = $state<any[]>([]);
+    let loading = $state(true);
+    let searchQuery = $state('');
 
     onMount(async () => {
-        // 1. Prüfen, ob der User eingeloggt ist (Name aus dem localStorage holen)
         const storedUser = localStorage.getItem('username');
         if (storedUser) {
             username = storedUser;
         }
 
-        // 2. Rezepte vom FastAPI-Backend abrufen
         try {
-            const res = await fetch('http://localhost:8000/recipes');
+            // Token mitschicken, damit eigene private Rezepte auch im Dashboard erscheinen
+            const token = localStorage.getItem('token');
+            const headers: Record<string, string> = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch('http://localhost:8000/recipes', { headers });
             if (res.ok) {
                 recipes = await res.json();
             }
@@ -27,13 +32,23 @@
         }
     });
 
-    // Abmelde-Funktion für den Logout-Button unten
     function handleLogout() {
         localStorage.removeItem('token');
         localStorage.removeItem('username');
+        document.cookie = 'token=; Max-Age=0; path=/';
         goto('/auth/login');
     }
+
+    function handleSearch() {
+        const q = searchQuery.trim();
+        if (q) {
+            goto(`/recipes?q=${encodeURIComponent(q)}`);
+        } else {
+            goto('/recipes');
+        }
+    }
 </script>
+
 <div class="dashboard-container">
 	<!-- Background -->
 	<div class="background-blur blur-1"></div>
@@ -46,6 +61,7 @@
 		</div>
 
 		<div class="nav-actions">
+			<a href="/recipes" class="nav-link">Alle Rezepte</a>
 			<a href="/recipes/new" class="create-btn">
 				+ Neues Rezept
 			</a>
@@ -76,13 +92,8 @@
 
 			<div class="hero-stats">
 				<div class="stat-card">
-					<div class="stat-number">
-						{recipes.length}
-					</div>
-
-					<div class="stat-label">
-						Rezepte
-					</div>
+					<div class="stat-number">{recipes.length}</div>
+					<div class="stat-label">Rezepte</div>
 				</div>
 			</div>
 		</section>
@@ -91,10 +102,12 @@
 		<div class="searchbar">
 			<input
 				type="text"
+				bind:value={searchQuery}
 				placeholder="Was möchtest du heute kochen?"
+				onkeydown={(e) => { if (e.key === 'Enter') handleSearch(); }}
 			/>
 
-			<button>
+			<button onclick={handleSearch}>
 				Suchen
 			</button>
 		</div>
@@ -107,7 +120,7 @@
 					<p>Die neuesten Gerichte aus der Community</p>
 				</div>
 
-				<a href="/recipes">
+				<a href="/recipes" class="see-all">
 					Alle ansehen →
 				</a>
 			</div>
@@ -124,32 +137,31 @@
 
 			{:else}
 				<div class="recipes-grid">
-					{#each recipes as recipe}
+					{#each recipes.slice(0, 6) as recipe}
 						<a
 							href={`/recipes/${recipe.id}`}
 							class="recipe-card"
 						>
 							<div class="recipe-image">
-								<img
-									src={recipe.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=1200'}
-									alt={recipe.title}
-								/>
+								{#if recipe.image_url}
+									<img src={recipe.image_url} alt={recipe.title} />
+								{:else}
+									<div class="img-placeholder">🍽️</div>
+								{/if}
 								<div class="image-overlay"></div>
+								{#if recipe.category}
+									<span class="category-badge">{recipe.category}</span>
+								{/if}
 							</div>
 
 							<div class="recipe-content">
 								<h3>{recipe.title}</h3>
 
-								<p>{recipe.description}</p>
+								<p>{recipe.description ?? 'Keine Beschreibung verfügbar.'}</p>
 
 								<div class="recipe-footer">
-									<span>
-										⏱ {recipe.cooking_time || 20} Min
-									</span>
-
-									<span class="open-link">
-										Öffnen →
-									</span>
+									<span>⏱ {recipe.prep_time_minutes ?? '–'} Min</span>
+									<span class="open-link">Öffnen →</span>
 								</div>
 							</div>
 						</a>
@@ -181,6 +193,7 @@
 		border-radius: 9999px;
 		filter: blur(120px);
 		pointer-events: none;
+		z-index: 0;
 	}
 
 	.blur-1 {
@@ -228,6 +241,21 @@
 		gap: 14px;
 	}
 
+	.nav-link {
+		padding: 12px 18px;
+		border-radius: 16px;
+		color: #cbd5e1;
+		text-decoration: none;
+		font-weight: 600;
+		font-size: 14px;
+		transition: 0.2s;
+	}
+
+	.nav-link:hover {
+		color: white;
+		background: rgba(255, 255, 255, 0.05);
+	}
+
 	.create-btn {
 		padding: 12px 20px;
 		border-radius: 16px;
@@ -250,6 +278,9 @@
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		color: white;
 		cursor: pointer;
+		font-family: inherit;
+		font-size: 14px;
+		font-weight: 600;
 		transition: 0.3s;
 	}
 
@@ -259,21 +290,22 @@
 	}
 
 	/* CONTENT */
-
 	.content {
+		position: relative;
+		z-index: 1;
 		max-width: 1400px;
 		margin: 0 auto;
 		padding: 50px 32px 100px;
 	}
 
 	/* HERO */
-
 	.hero {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 40px;
 		margin-bottom: 50px;
+		flex-wrap: wrap;
 	}
 
 	.hero-content {
@@ -337,7 +369,6 @@
 	}
 
 	/* SEARCH */
-
 	.searchbar {
 		display: flex;
 		align-items: center;
@@ -358,6 +389,7 @@
 		font-size: 18px;
 		color: white;
 		padding: 10px 16px;
+		font-family: inherit;
 	}
 
 	.searchbar input::placeholder {
@@ -373,6 +405,7 @@
 		font-weight: 700;
 		cursor: pointer;
 		transition: 0.3s;
+		font-family: inherit;
 	}
 
 	.searchbar button:hover {
@@ -380,7 +413,6 @@
 	}
 
 	/* SECTION */
-
 	.section-header {
 		display: flex;
 		align-items: flex-end;
@@ -390,93 +422,7 @@
 
 	.section-header h2 {
 		margin: 0;
-		font-size: 22px;
-	}
-
-	/* Recipes grid and cards */
-	.recipes-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-		gap: 18px;
-	}
-
-	.recipe-card {
-		display: block;
-		border-radius: 16px;
-		overflow: hidden;
-		text-decoration: none;
-		color: inherit;
-		background: rgba(255,255,255,0.03);
-		border: 1px solid rgba(255,255,255,0.04);
-		transition: transform 0.16s, box-shadow 0.16s;
-	}
-
-	.recipe-card:hover {
-		transform: translateY(-6px);
-		box-shadow: 0 12px 30px rgba(2,6,23,0.6);
-	}
-
-	.recipe-image {
-		position: relative;
-		width: 100%;
-		height: 160px;
-		overflow: hidden;
-		flex-shrink: 0;
-	}
-
-	.recipe-image img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.image-overlay {
-		position: absolute;
-		inset: 0;
-		background: linear-gradient(to top, rgba(0,0,0,.7), transparent);
-	}
-
-	.recipe-content {
-		padding: 16px 18px 20px;
-	}
-
-	.recipe-content h3 {
-		margin: 0 0 8px 0;
-		font-size: 18px;
-	}
-
-	.recipe-content p {
-		margin: 0 0 12px 0;
-		color: #94a3b8;
-		font-size: 14px;
-		height: 38px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.recipe-footer {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 13px;
-		color: #94a3b8;
-	}
-
-	.open-link {
-		color: #d1fae5;
-		font-weight: 700;
-	}
-
-	@media (max-width: 900px) {
-		.glass-nav { padding: 20px; }
-		.content { padding: 32px 20px 100px; }
-		.hero h1 { font-size: 44px; }
-		.recipes-grid { grid-template-columns: 1fr; }
-	}
-</style>
 		font-size: 38px;
-		margin: 0;
 		font-weight: 800;
 	}
 
@@ -485,40 +431,41 @@
 		color: #64748b;
 	}
 
-	.section-header a {
+	.see-all {
 		color: #4ade80;
 		text-decoration: none;
 		font-weight: 600;
 	}
 
 	/* GRID */
-
 	.recipes-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-		gap: 28px;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 24px;
 	}
 
 	.recipe-card {
 		overflow: hidden;
-		border-radius: 32px;
-		background: rgba(255, 255, 255, 0.05);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 24px;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.07);
 		backdrop-filter: blur(20px);
 		text-decoration: none;
 		color: inherit;
-		transition: 0.35s;
+		transition: 0.3s;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.recipe-card:hover {
-		transform: translateY(-8px);
+		transform: translateY(-6px);
 		border-color: rgba(34, 197, 94, 0.25);
-		box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
 	}
 
 	.recipe-image {
 		position: relative;
-		height: 240px;
+		aspect-ratio: 16 / 10;
 		overflow: hidden;
 	}
 
@@ -526,43 +473,78 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		transition: transform 0.7s ease;
+		transition: transform 0.5s;
 	}
 
-	.recipe-card:hover img {
-		transform: scale(1.08);
+	.recipe-card:hover .recipe-image img {
+		transform: scale(1.05);
+	}
+
+	.img-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 60px;
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(16, 185, 129, 0.05));
 	}
 
 	.image-overlay {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(to top, rgba(0,0,0,.7), transparent);
+		background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent 60%);
+	}
+
+	.category-badge {
+		position: absolute;
+		top: 14px;
+		left: 14px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: rgba(0, 0, 0, 0.55);
+		backdrop-filter: blur(8px);
+		color: #4ade80;
+		font-size: 11px;
+		font-weight: 700;
+		text-transform: uppercase;
 	}
 
 	.recipe-content {
-		padding: 28px;
+		padding: 22px;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		gap: 12px;
 	}
 
 	.recipe-content h3 {
-		margin: 0 0 12px;
-		font-size: 28px;
+		margin: 0;
+		font-size: 20px;
 		font-weight: 800;
+		line-height: 1.3;
 	}
 
 	.recipe-content p {
-		margin: 0 0 24px;
-		line-height: 1.7;
+		margin: 0;
+		line-height: 1.55;
 		color: #94a3b8;
+		font-size: 14px;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
 	}
 
 	.recipe-footer {
 		display: flex;
-		align-items: center;
 		justify-content: space-between;
-		padding-top: 18px;
-		border-top: 1px solid rgba(255,255,255,0.06);
-		font-size: 14px;
-		color: #64748b;
+		align-items: center;
+		padding-top: 12px;
+		margin-top: auto;
+		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		font-size: 13px;
+		color: #94a3b8;
 	}
 
 	.open-link {
@@ -571,34 +553,36 @@
 	}
 
 	/* EMPTY */
-
 	.empty-state {
-		padding: 80px;
+		padding: 60px;
 		text-align: center;
-		border-radius: 32px;
-		background: rgba(255,255,255,0.04);
-		border: 1px solid rgba(255,255,255,0.05);
+		border-radius: 24px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.05);
 		color: #64748b;
 	}
 
 	/* MOBILE */
-
 	@media (max-width: 900px) {
+		.glass-nav {
+			padding: 20px;
+		}
+
+		.content {
+			padding: 32px 20px 100px;
+		}
+
 		.hero {
 			flex-direction: column;
 			align-items: flex-start;
 		}
 
 		.hero h1 {
-			font-size: 48px;
+			font-size: 44px;
 		}
 
-		.glass-nav {
-			padding: 20px;
-		}
-
-		.content {
-			padding: 32px 20px 120px;
+		.recipes-grid {
+			grid-template-columns: 1fr;
 		}
 
 		.searchbar {
@@ -607,6 +591,10 @@
 
 		.searchbar button {
 			width: 100%;
+		}
+
+		.section-header h2 {
+			font-size: 28px;
 		}
 	}
 </style>

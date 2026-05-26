@@ -2,16 +2,30 @@
     import { goto } from '$app/navigation';
     import { register } from '$lib/api';
 
-    let username = '';
-    let email = '';
-    let password = '';
-    let passwordConfirm = '';
-    let errorMessage = '';
-    let isLoading = false;
+    // In runes mode (vom svelte.config.js erzwungen) MÜSSEN reaktive
+    // Werte mit $state() deklariert werden, sonst aktualisiert sich die UI nicht.
+    let username = $state('');
+    let email = $state('');
+    let password = $state('');
+    let passwordConfirm = $state('');
+    let errorMessage = $state('');
+    let successMessage = $state('');
+    let isLoading = $state(false);
 
-    // 🔍 KORREKTUR: Alles sauber in eine asynchrone Funktion verpackt
     async function handleRegister() {
-        errorMessage = ''; // Fehler bei neuem Versuch zurücksetzen
+        errorMessage = '';
+        successMessage = '';
+
+        // Frontend-Validierung
+        if (username.trim().length < 3) {
+            errorMessage = 'Der Nutzername muss mindestens 3 Zeichen lang sein.';
+            return;
+        }
+
+        if (password.length < 6) {
+            errorMessage = 'Das Passwort muss mindestens 6 Zeichen lang sein.';
+            return;
+        }
 
         if (password !== passwordConfirm) {
             errorMessage = 'Passwörter stimmen nicht überein.';
@@ -21,8 +35,12 @@
         isLoading = true;
 
         try {
-            await register(username, email, password);
-            await goto('/auth/login');
+            await register(username.trim(), email.trim(), password);
+            successMessage = 'Account erfolgreich erstellt! Du wirst angemeldet...';
+            // Kurz warten damit der User die Bestätigung sieht
+            setTimeout(() => {
+                goto('/auth/login');
+            }, 800);
         } catch (error: unknown) {
             if (error instanceof Error) {
                 errorMessage = error.message;
@@ -60,6 +78,12 @@
 				</div>
 			{/if}
 
+			{#if successMessage}
+				<div class="success-box" role="status" aria-live="polite">
+					✓ {successMessage}
+				</div>
+			{/if}
+
 			<div class="field">
 				<label for="username">Nutzername</label>
 				<input
@@ -68,6 +92,7 @@
 					bind:value={username}
 					required
 					placeholder="dein_name"
+					autocomplete="username"
 				/>
 			</div>
 
@@ -79,6 +104,7 @@
 					bind:value={email}
 					required
 					placeholder="du@beispiel.de"
+					autocomplete="email"
 				/>
 			</div>
 
@@ -91,6 +117,7 @@
 						bind:value={password}
 						required
 						placeholder="••••••••"
+						autocomplete="new-password"
 					/>
 				</div>
 
@@ -102,6 +129,7 @@
 						bind:value={passwordConfirm}
 						required
 						placeholder="••••••••"
+						autocomplete="new-password"
 					/>
 				</div>
 			</div>
@@ -161,7 +189,6 @@
 	}
 
 	/* CARD */
-
 	.auth-card {
 		position: relative;
 		z-index: 1;
@@ -272,12 +299,23 @@
 	}
 
 	.error-box {
-		background: rgba(239, 68, 68, 0.08);
-		border: 1px solid rgba(239, 68, 68, 0.18);
-		color: #f87171;
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid rgba(239, 68, 68, 0.25);
+		color: #fca5a5;
 		padding: 13px 16px;
 		border-radius: 14px;
 		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	.success-box {
+		background: rgba(34, 197, 94, 0.1);
+		border: 1px solid rgba(34, 197, 94, 0.25);
+		color: #86efac;
+		padding: 13px 16px;
+		border-radius: 14px;
+		font-size: 13px;
+		line-height: 1.5;
 	}
 
 	.submit-btn {
