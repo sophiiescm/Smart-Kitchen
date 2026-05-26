@@ -101,15 +101,19 @@ class RecipeResponse(RecipeBase):
     id: int
     user_id: int
     created_at: datetime
-    
-    # NEU FÜR PHASE 3: Bewertungs-Metadaten
+
+    # Bewertungs-Metadaten
     average_rating: float = 0.0
     rating_count: int = 0
-    
+
+    # Favoriten-Status: true wenn der aktuelle User dieses Rezept favorisiert hat.
+    # Bei anonymen Zugriffen immer false.
+    is_favorited: bool = False
+
     ingredients: List[IngredientResponse] = []
     steps: List[StepResponse] = []
     tags: List[TagResponse] = []
-    
+
     model_config = {"from_attributes": True}
 
 

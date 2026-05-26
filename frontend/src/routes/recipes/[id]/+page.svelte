@@ -9,6 +9,8 @@
 		updateRecipe,
 		getCurrentUser,
 		isLoggedIn,
+		favoriteRecipe,
+		unfavoriteRecipe,
 	} from '$lib/api';
 
 	type Recipe = {
@@ -21,6 +23,7 @@
 		servings?: number;
 		image_url?: string;
 		is_public?: boolean;
+		is_favorited?: boolean;
 		average_rating?: number;
 		rating_count?: number;
 		ingredients?: { name: string; amount?: number; unit?: string }[];
@@ -228,6 +231,30 @@
 		}
 	}
 
+	async function toggleFavorite() {
+		if (!recipe) return;
+		if (!isAuthenticated) {
+			errorMessage = 'Bitte melde dich an, um Rezepte zu favorisieren.';
+			return;
+		}
+
+		const wasFav = recipe.is_favorited === true;
+		// optimistic update
+		recipe = { ...recipe, is_favorited: !wasFav };
+
+		try {
+			if (wasFav) {
+				await unfavoriteRecipe(recipe.id);
+			} else {
+				await favoriteRecipe(recipe.id);
+			}
+		} catch (err) {
+			console.error(err);
+			recipe = { ...recipe, is_favorited: wasFav };
+			errorMessage = 'Favoriten konnten nicht aktualisiert werden.';
+		}
+	}
+
 	async function confirmDelete() {
 		if (!recipe) return;
 		if (!confirm(`Rezept "${recipe.title}" wirklich löschen?`)) return;
@@ -295,16 +322,26 @@
 							{/if}
 						</div>
 
-						{#if isOwner}
-							<div class="owner-actions">
+						<div class="owner-actions">
+							{#if isAuthenticated}
+								<button
+									class="fav-btn-detail"
+									class:active={recipe.is_favorited === true}
+									onclick={toggleFavorite}
+									title={recipe.is_favorited ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+								>
+									{recipe.is_favorited ? '❤ Favorit' : '🤍 Favorisieren'}
+								</button>
+							{/if}
+							{#if isOwner}
 								<button class="edit-btn" onclick={startEdit}>
 									✏️ Bearbeiten
 								</button>
 								<button class="delete-btn" onclick={confirmDelete} disabled={isDeleting}>
 									{isDeleting ? 'Lösche...' : '🗑 Löschen'}
 								</button>
-							</div>
-						{/if}
+							{/if}
+						</div>
 					</div>
 
 					<h1>{recipe.title}</h1>
@@ -716,6 +753,30 @@
 		cursor: pointer;
 		font-family: inherit;
 		transition: 0.2s;
+	}
+
+	.fav-btn-detail {
+		padding: 10px 16px;
+		border-radius: 12px;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		font-family: inherit;
+		transition: 0.2s;
+		background: rgba(244, 63, 94, 0.08);
+		border: 1px solid rgba(244, 63, 94, 0.2);
+		color: #fda4af;
+	}
+
+	.fav-btn-detail:hover {
+		background: rgba(244, 63, 94, 0.15);
+	}
+
+	.fav-btn-detail.active {
+		background: rgba(244, 63, 94, 0.95);
+		border-color: rgba(244, 63, 94, 0.5);
+		color: white;
+		box-shadow: 0 4px 16px rgba(244, 63, 94, 0.3);
 	}
 
 	.edit-btn {

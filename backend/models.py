@@ -18,6 +18,14 @@ recipe_tags = Table(
     Column('tag_id', BigInteger, ForeignKey('tags.id'), primary_key=True)
 )
 
+# M:N — welcher User hat welches Rezept favorisiert
+recipe_favorites = Table(
+    'recipe_favorites', Base.metadata,
+    Column('user_id', BigInteger, ForeignKey('users.id'), primary_key=True),
+    Column('recipe_id', BigInteger, ForeignKey('recipes.id'), primary_key=True),
+    Column('created_at', DateTime, default=datetime.utcnow),
+)
+
 # 1. users [cite: 2, 3]
 class User(Base):
     """Benutzertabelle – hier könnt ihr weitere Felder ergänzen."""
@@ -32,6 +40,7 @@ class User(Base):
     recipes = relationship("Recipe", back_populates="owner")
     ratings = relationship("RecipeRating", back_populates="user")
     owned_groups = relationship("Group", back_populates="owner")
+    favorite_recipes = relationship("Recipe", secondary=recipe_favorites, back_populates="favorited_by")
 
 # 2. recipes [cite: 4, 5]
 class Recipe(Base):
@@ -56,6 +65,7 @@ class Recipe(Base):
     steps = relationship("RecipeStep", back_populates="recipe", cascade="all, delete-orphan")
     ratings = relationship("RecipeRating", back_populates="recipe", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary=recipe_tags, back_populates="recipes")
+    favorited_by = relationship("User", secondary=recipe_favorites, back_populates="favorite_recipes")
 
 # 3. recipe_ingredients [cite: 6, 7]
 class RecipeIngredient(Base):

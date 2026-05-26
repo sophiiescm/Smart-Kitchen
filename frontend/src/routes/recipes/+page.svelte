@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { Flame, Search, Star, Clock3, ChefHat, Plus } from 'lucide-svelte';
+	import { Flame, Search, Star, Clock3, ChefHat, Plus, Heart } from 'lucide-svelte';
+	import { favoriteRecipe, unfavoriteRecipe } from '$lib/api';
 
 	type Ingredient = { name: string; amount?: number; unit?: string };
 	type Recipe = {
@@ -13,6 +14,7 @@
 		prep_time_minutes?: number;
 		image_url?: string;
 		is_public?: boolean;
+		is_favorited?: boolean;
 		average_rating?: number;
 		rating_count?: number;
 		ingredients?: Ingredient[];
@@ -25,6 +27,7 @@
 	let search = $state('');
 	let selectedCategory = $state('');
 	let showOnlyMine = $state(false);
+	let showOnlyFavorites = $state(false);
 	let isLoggedIn = $state(false);
 	let currentUserId = $state<number | null>(null);
 
@@ -91,9 +94,43 @@
 				!showOnlyMine ||
 				(currentUserId !== null && recipe.user_id === currentUserId);
 
-			return matchesSearch && matchesCategory && matchesOwner;
+			const matchesFavorite = !showOnlyFavorites || recipe.is_favorited === true;
+
+			return matchesSearch && matchesCategory && matchesOwner && matchesFavorite;
 		})
 	);
+
+	async function toggleFavorite(event: MouseEvent, recipe: Recipe) {
+		// Klick auf das Herz darf nicht zur Detailseite navigieren
+		event.preventDefault();
+		event.stopPropagation();
+
+		if (!isLoggedIn) {
+			window.location.href = '/auth/login?redirect=/recipes';
+			return;
+		}
+
+		const wasFav = recipe.is_favorited === true;
+		// Optimistic update
+		recipes = recipes.map((r) =>
+			r.id === recipe.id ? { ...r, is_favorited: !wasFav } : r
+		);
+
+		try {
+			if (wasFav) {
+				await unfavoriteRecipe(recipe.id);
+			} else {
+				await favoriteRecipe(recipe.id);
+			}
+		} catch (err) {
+			console.error(err);
+			// Rollback
+			recipes = recipes.map((r) =>
+				r.id === recipe.id ? { ...r, is_favorited: wasFav } : r
+			);
+			errorMessage = 'Favoriten konnten nicht aktualisiert werden.';
+		}
+	}
 
 	function clearFilters() {
 		search = '';
@@ -180,6 +217,15 @@
 				>
 					{showOnlyMine ? '✓ Meine Rezepte' : '👤 Meine Rezepte'}
 				</button>
+
+				<button
+					class="category-chip fav-chip"
+					class:active={showOnlyFavorites}
+					onclick={() => (showOnlyFavorites = !showOnlyFavorites)}
+					title="Nur Favoriten anzeigen"
+				>
+					{showOnlyFavorites ? '❤ Favoriten' : '🤍 Favoriten'}
+				</button>
 			{/if}
 		</div>
 
@@ -238,6 +284,19 @@
 							{/if}
 							{#if recipe.is_public === false}
 								<span class="private-badge" title="Privates Rezept — nur für dich sichtbar">🔒 Privat</span>
+							{/if}
+
+							{#if isLoggedIn}
+								<button
+									type="button"
+									class="fav-btn"
+									class:active={recipe.is_favorited === true}
+									onclick={(e) => toggleFavorite(e, recipe)}
+									aria-label={recipe.is_favorited ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+									title={recipe.is_favorited ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+								>
+									<Heart class="fav-icon" />
+								</button>
 							{/if}
 						</div>
 
@@ -535,6 +594,18 @@
 		color: #bfdbfe;
 	}
 
+	.fav-chip {
+		background: rgba(244, 63, 94, 0.06);
+		border-color: rgba(244, 63, 94, 0.18);
+		color: #fda4af;
+	}
+
+	.fav-chip.active {
+		background: rgba(244, 63, 94, 0.18);
+		border-color: rgba(244, 63, 94, 0.4);
+		color: #fecdd3;
+	}
+
 	/* ERROR */
 	.error-banner {
 		padding: 14px 18px;
@@ -638,6 +709,47 @@
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		backdrop-filter: blur(8px);
+	}
+
+	.fav-btn {
+		position: absolute;
+		bottom: 14px;
+		right: 14px;
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.55);
+		backdrop-filter: blur(8px);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		color: rgba(255, 255, 255, 0.7);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+		z-index: 2;
+	}
+
+	.fav-btn:hover {
+		transform: scale(1.1);
+		background: rgba(0, 0, 0, 0.7);
+		color: #fb7185;
+	}
+
+	.fav-btn.active {
+		background: rgba(244, 63, 94, 0.95);
+		border-color: rgba(244, 63, 94, 0.5);
+		color: white;
+		box-shadow: 0 4px 16px rgba(244, 63, 94, 0.4);
+	}
+
+	.fav-btn.active :global(.fav-icon) {
+		fill: currentColor;
+	}
+
+	.fav-btn :global(.fav-icon) {
+		width: 18px;
+		height: 18px;
 	}
 
 	.card-body {

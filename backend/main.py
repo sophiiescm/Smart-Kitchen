@@ -15,7 +15,7 @@ from auth import (
 )
 
 from database import Base, SessionLocal, engine, get_db, wait_for_db
-from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating, Tag
+from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating, Tag, recipe_favorites
 from schemas import (
     Token,
     UserCreate,
@@ -241,19 +241,8 @@ def search_recipes(
         query = query.join(Recipe.tags).filter(Tag.name.ilike(tag))
 
     results = query.distinct().all()
-    recipes_out = []
-    for recipe in results:
-        rating_stats = db.query(
-            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-            func.count(RecipeRating.id).label("count")
-        ).filter(RecipeRating.recipe_id == recipe.id).first()
-
-        recipe_data = RecipeResponse.model_validate(recipe)
-        recipe_data.average_rating = round(rating_stats.average, 1)
-        recipe_data.rating_count = rating_stats.count
-        recipes_out.append(recipe_data)
-
-    return recipes_out
+    favorite_ids: set[int] = set()
+    return [_enrich_recipe(r, db, favorite_ids) for r in results]
 
 
 @app.post("/ratings", response_model=RatingResponse, status_code=201)
@@ -344,19 +333,37 @@ def list_public_recipes(
         query = query.join(Recipe.tags).filter(Tag.name.ilike(tag))
 
     recipes = query.distinct().all()
-    recipes_out = []
-    for recipe in recipes:
-        rating_stats = db.query(
-            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-            func.count(RecipeRating.id).label("count")
-        ).filter(RecipeRating.recipe_id == recipe.id).first()
+    favorite_ids = _get_user_favorite_recipe_ids(db, current_username)
+    return [_enrich_recipe(r, db, favorite_ids) for r in recipes]
 
-        recipe_data = RecipeResponse.model_validate(recipe)
-        recipe_data.average_rating = round(rating_stats.average, 1)
-        recipe_data.rating_count = rating_stats.count
-        recipes_out.append(recipe_data)
 
-    return recipes_out
+def _get_user_favorite_recipe_ids(db: Session, username: Optional[str]) -> set[int]:
+    """Liefert die Menge der Rezept-IDs, die der angegebene User favorisiert hat.
+    Bei anonymen Zugriffen ist die Menge leer."""
+    if not username:
+        return set()
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        return set()
+    rows = db.execute(
+        recipe_favorites.select().where(recipe_favorites.c.user_id == user.id)
+    ).fetchall()
+    return {row.recipe_id for row in rows}
+
+
+def _enrich_recipe(recipe: Recipe, db: Session, favorite_ids: set[int]) -> RecipeResponse:
+    """Wandelt ein Recipe-ORM-Objekt in eine RecipeResponse um und ergänzt
+    Bewertungs-Metadaten sowie den Favoriten-Status."""
+    rating_stats = db.query(
+        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
+        func.count(RecipeRating.id).label("count")
+    ).filter(RecipeRating.recipe_id == recipe.id).first()
+
+    recipe_data = RecipeResponse.model_validate(recipe)
+    recipe_data.average_rating = round(rating_stats.average, 1)
+    recipe_data.rating_count = rating_stats.count
+    recipe_data.is_favorited = recipe.id in favorite_ids
+    return recipe_data
 
 
 def _build_tag_objects(db: Session, tag_names: list[str]) -> list[Tag]:
@@ -377,8 +384,85 @@ def _build_tag_objects(db: Session, tag_names: list[str]) -> list[Tag]:
     return tags
 
 
-# WICHTIG: /recipes/mine MUSS vor /recipes/{recipe_id} stehen,
-# sonst versucht FastAPI "mine" in int zu konvertieren und liefert einen 422 Fehler.
+# WICHTIG: spezielle /recipes/... Routen MÜSSEN vor /recipes/{recipe_id} stehen,
+# sonst versucht FastAPI z.B. "mine" oder "favorites" in int zu konvertieren.
+
+
+@app.get("/recipes/favorites", response_model=list[RecipeResponse])
+def get_favorite_recipes(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """❤ Favoriten-Liste des eingeloggten Users."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    favorite_ids = _get_user_favorite_recipe_ids(db, current_username)
+    recipes = db.query(Recipe).filter(Recipe.id.in_(favorite_ids)).all() if favorite_ids else []
+    # Private Rezepte anderer User filtern (Sicherheit, falls jemand mal ein
+    # öffentliches Rezept favorisiert hat das später auf privat gesetzt wurde)
+    visible = [r for r in recipes if r.is_public or r.user_id == user.id]
+    return [_enrich_recipe(r, db, favorite_ids) for r in visible]
+
+
+@app.post("/recipes/{recipe_id}/favorite", status_code=201)
+def add_favorite(
+    recipe_id: int,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """❤ Rezept zu den Favoriten hinzufügen."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+
+    if not recipe.is_public and recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Privates Rezept kann nicht favorisiert werden.",
+        )
+
+    # Existiert schon? Dann idempotent ignorieren.
+    existing = db.execute(
+        recipe_favorites.select()
+        .where(recipe_favorites.c.user_id == user.id)
+        .where(recipe_favorites.c.recipe_id == recipe.id)
+    ).first()
+    if not existing:
+        db.execute(
+            recipe_favorites.insert().values(user_id=user.id, recipe_id=recipe.id)
+        )
+        db.commit()
+
+    return {"detail": "Zu Favoriten hinzugefügt", "recipe_id": recipe_id, "is_favorited": True}
+
+
+@app.delete("/recipes/{recipe_id}/favorite", status_code=200)
+def remove_favorite(
+    recipe_id: int,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """💔 Rezept aus den Favoriten entfernen."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    db.execute(
+        recipe_favorites.delete()
+        .where(recipe_favorites.c.user_id == user.id)
+        .where(recipe_favorites.c.recipe_id == recipe_id)
+    )
+    db.commit()
+    return {"detail": "Aus Favoriten entfernt", "recipe_id": recipe_id, "is_favorited": False}
+
+
+
 @app.get("/recipes/mine", response_model=list[RecipeResponse])
 def get_my_recipes(
     current_username: Annotated[str, Depends(get_current_user)],
@@ -390,19 +474,8 @@ def get_my_recipes(
         raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
 
     recipes = db.query(Recipe).filter(Recipe.user_id == user.id).all()
-    recipes_out = []
-    for recipe in recipes:
-        rating_stats = db.query(
-            func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-            func.count(RecipeRating.id).label("count")
-        ).filter(RecipeRating.recipe_id == recipe.id).first()
-
-        recipe_data = RecipeResponse.model_validate(recipe)
-        recipe_data.average_rating = round(rating_stats.average, 1)
-        recipe_data.rating_count = rating_stats.count
-        recipes_out.append(recipe_data)
-
-    return recipes_out
+    favorite_ids = _get_user_favorite_recipe_ids(db, current_username)
+    return [_enrich_recipe(r, db, favorite_ids) for r in recipes]
 
 
 @app.get("/recipes/{recipe_id}", response_model=RecipeResponse)
@@ -427,16 +500,8 @@ def get_single_recipe(
             detail="Dieses Rezept ist privat und nur für den Besitzer sichtbar.",
         )
 
-    rating_stats = db.query(
-        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-        func.count(RecipeRating.id).label("count")
-    ).filter(RecipeRating.recipe_id == recipe_id).first()
-
-    recipe_data = RecipeResponse.model_validate(recipe)
-    recipe_data.average_rating = round(rating_stats.average, 1)
-    recipe_data.rating_count = rating_stats.count
-
-    return recipe_data
+    favorite_ids = _get_user_favorite_recipe_ids(db, current_username)
+    return _enrich_recipe(recipe, db, favorite_ids)
 
 
 @app.put("/recipes/{recipe_id}", response_model=RecipeResponse)
@@ -505,15 +570,8 @@ def update_recipe(
     db.commit()
     db.refresh(recipe)
 
-    rating_stats = db.query(
-        func.coalesce(func.avg(RecipeRating.rating), 0.0).label("average"),
-        func.count(RecipeRating.id).label("count")
-    ).filter(RecipeRating.recipe_id == recipe.id).first()
-
-    recipe_data = RecipeResponse.model_validate(recipe)
-    recipe_data.average_rating = round(rating_stats.average, 1)
-    recipe_data.rating_count = rating_stats.count
-    return recipe_data
+    favorite_ids = _get_user_favorite_recipe_ids(db, current_username)
+    return _enrich_recipe(recipe, db, favorite_ids)
 
 
 @app.delete("/recipes/{recipe_id}", status_code=200)

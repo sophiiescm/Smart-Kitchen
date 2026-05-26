@@ -128,6 +128,22 @@ CREATE TABLE IF NOT EXISTS recipe_tags (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
+-- 6c. recipe_favorites  (M:N – User ↔ Rezept, persönliche Favoriten)
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recipe_favorites (
+    user_id    BIGINT NOT NULL,
+    recipe_id  BIGINT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, recipe_id),
+    CONSTRAINT fk_fav_user
+        FOREIGN KEY (user_id) REFERENCES users (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_fav_recipe
+        FOREIGN KEY (recipe_id) REFERENCES recipes (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -----------------------------------------------------------
 -- 7. groups
 --    Benutzergruppen, die Rezepte teilen können.
 -- -----------------------------------------------------------

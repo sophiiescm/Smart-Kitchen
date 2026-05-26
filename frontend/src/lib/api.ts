@@ -243,3 +243,18 @@ export async function deleteRecipe(recipeId: number): Promise<void> {
 		method: 'DELETE'
 	});
 }
+
+/** ❤ Rezept zu Favoriten hinzufügen */
+export async function favoriteRecipe(recipeId: number): Promise<void> {
+	await fetchProtected<any>(`/recipes/${recipeId}/favorite`, { method: 'POST' });
+}
+
+/** 💔 Rezept aus Favoriten entfernen */
+export async function unfavoriteRecipe(recipeId: number): Promise<void> {
+	await fetchProtected<any>(`/recipes/${recipeId}/favorite`, { method: 'DELETE' });
+}
+
+/** Liste der eigenen Favoriten */
+export async function getMyFavorites(): Promise<any[]> {
+	return await fetchProtected<any[]>('/recipes/favorites');
+}
