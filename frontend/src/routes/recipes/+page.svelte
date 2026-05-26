@@ -3,15 +3,19 @@
 	import { page } from '$app/stores';
 	import { Flame, Search, Star, Clock3, ChefHat, Plus } from 'lucide-svelte';
 
+	type Ingredient = { name: string; amount?: number; unit?: string };
 	type Recipe = {
 		id: number;
+		user_id?: number;
 		title: string;
 		description?: string;
 		category?: string;
 		prep_time_minutes?: number;
 		image_url?: string;
+		is_public?: boolean;
 		average_rating?: number;
 		rating_count?: number;
+		ingredients?: Ingredient[];
 		tags?: { name: string }[];
 	};
 
@@ -20,23 +24,36 @@
 	let errorMessage = $state('');
 	let search = $state('');
 	let selectedCategory = $state('');
+	let showOnlyMine = $state(false);
+	let isLoggedIn = $state(false);
+	let currentUserId = $state<number | null>(null);
 
 	const categories = ['Pasta', 'Dessert', 'Frühstück', 'Vegan', 'Vegetarisch', 'Fleisch'];
 
 	onMount(async () => {
-		// Suche aus URL-Parameter (?q=...) übernehmen, z.B. wenn vom Dashboard
-		// hierher navigiert wurde.
+		// Suche aus URL-Parameter (?q=...) übernehmen
 		const urlQuery = $page.url.searchParams.get('q');
-		if (urlQuery) {
-			search = urlQuery;
-		}
+		if (urlQuery) search = urlQuery;
+
+		// Token-Check für UI-Anpassungen
+		const token = localStorage.getItem('token');
+		isLoggedIn = !!token;
 
 		try {
-			// Token mitschicken falls eingeloggt, damit auch eigene private
-			// Rezepte in der Liste erscheinen.
-			const token = localStorage.getItem('token');
 			const headers: Record<string, string> = {};
 			if (token) headers['Authorization'] = `Bearer ${token}`;
+
+			// Eigene User-ID herausfinden (nur wenn eingeloggt) — wird für
+			// den "Nur meine Rezepte"-Filter und Owner-Erkennung gebraucht.
+			if (token) {
+				try {
+					const profileRes = await fetch('http://localhost:8000/my-profile', { headers });
+					if (profileRes.ok) {
+						const profile = await profileRes.json();
+						currentUserId = profile.id;
+					}
+				} catch { /* ignore */ }
+			}
 
 			const res = await fetch('http://localhost:8000/recipes', { headers });
 			if (res.ok) {
@@ -52,6 +69,8 @@
 		}
 	});
 
+	// Filter durchsucht zusätzlich Zutaten (Spec-Anforderung: "Volltextsuche,
+	// Filterung nach Kategorie oder Zutat")
 	let filteredRecipes = $derived(
 		recipes.filter((recipe) => {
 			const q = search.trim().toLowerCase();
@@ -61,13 +80,18 @@
 				recipe.title?.toLowerCase().includes(q) ||
 				recipe.description?.toLowerCase().includes(q) ||
 				recipe.category?.toLowerCase().includes(q) ||
-				recipe.tags?.some((t) => t.name?.toLowerCase().includes(q));
+				recipe.tags?.some((t) => t.name?.toLowerCase().includes(q)) ||
+				recipe.ingredients?.some((i) => i.name?.toLowerCase().includes(q));
 
 			const matchesCategory =
 				selectedCategory === '' ||
 				recipe.category?.toLowerCase() === selectedCategory.toLowerCase();
 
-			return matchesSearch && matchesCategory;
+			const matchesOwner =
+				!showOnlyMine ||
+				(currentUserId !== null && recipe.user_id === currentUserId);
+
+			return matchesSearch && matchesCategory && matchesOwner;
 		})
 	);
 
@@ -102,10 +126,16 @@
 				</p>
 			</div>
 
-			<a href="/recipes/new" class="create-btn">
-				<Plus class="btn-icon" />
-				Rezept erstellen
-			</a>
+			{#if isLoggedIn}
+				<a href="/recipes/new" class="create-btn">
+					<Plus class="btn-icon" />
+					Rezept erstellen
+				</a>
+			{:else}
+				<a href="/auth/login" class="create-btn">
+					Anmelden zum Erstellen
+				</a>
+			{/if}
 		</div>
 
 		<!-- SEARCH -->
@@ -140,6 +170,17 @@
 					{category}
 				</button>
 			{/each}
+
+			{#if isLoggedIn}
+				<button
+					class="category-chip mine-chip"
+					class:active={showOnlyMine}
+					onclick={() => (showOnlyMine = !showOnlyMine)}
+					title="Nur eigene Rezepte anzeigen"
+				>
+					{showOnlyMine ? '✓ Meine Rezepte' : '👤 Meine Rezepte'}
+				</button>
+			{/if}
 		</div>
 
 		<!-- ERROR -->
@@ -194,6 +235,9 @@
 							<div class="img-overlay"></div>
 							{#if recipe.category}
 								<span class="category-badge">{recipe.category}</span>
+							{/if}
+							{#if recipe.is_public === false}
+								<span class="private-badge" title="Privates Rezept — nur für dich sichtbar">🔒 Privat</span>
 							{/if}
 						</div>
 
@@ -478,6 +522,19 @@
 		color: #4ade80;
 	}
 
+	.mine-chip {
+		margin-left: auto;
+		background: rgba(59, 130, 246, 0.06);
+		border-color: rgba(59, 130, 246, 0.18);
+		color: #93c5fd;
+	}
+
+	.mine-chip.active {
+		background: rgba(59, 130, 246, 0.18);
+		border-color: rgba(59, 130, 246, 0.35);
+		color: #bfdbfe;
+	}
+
 	/* ERROR */
 	.error-banner {
 		padding: 14px 18px;
@@ -566,6 +623,21 @@
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
+	}
+
+	.private-badge {
+		position: absolute;
+		top: 14px;
+		right: 14px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: rgba(244, 114, 182, 0.85);
+		color: white;
+		font-size: 11px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		backdrop-filter: blur(8px);
 	}
 
 	.card-body {

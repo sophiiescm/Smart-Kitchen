@@ -8,11 +8,14 @@
     let recipes = $state<any[]>([]);
     let loading = $state(true);
     let searchQuery = $state('');
+    let isLoggedIn = $state(false);
 
     onMount(async () => {
         const storedUser = localStorage.getItem('username');
-        if (storedUser) {
+        const token = localStorage.getItem('token');
+        if (storedUser && token) {
             username = storedUser;
+            isLoggedIn = true;
         }
 
         try {
@@ -62,13 +65,20 @@
 
 		<div class="nav-actions">
 			<a href="/recipes" class="nav-link">Alle Rezepte</a>
-			<a href="/recipes/new" class="create-btn">
-				+ Neues Rezept
-			</a>
 
-			<button class="logout-btn" onclick={handleLogout}>
-				Abmelden
-			</button>
+			{#if isLoggedIn}
+				<a href="/recipes/new" class="create-btn">
+					+ Neues Rezept
+				</a>
+				<button class="logout-btn" onclick={handleLogout}>
+					Abmelden
+				</button>
+			{:else}
+				<a href="/auth/login" class="nav-link">Anmelden</a>
+				<a href="/auth/register" class="create-btn">
+					Registrieren
+				</a>
+			{/if}
 		</div>
 	</nav>
 

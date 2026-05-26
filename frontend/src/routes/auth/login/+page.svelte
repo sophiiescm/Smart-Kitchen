@@ -1,5 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
     import { login } from '$lib/api';
 
     // In runes mode müssen reaktive Werte mit $state() deklariert werden.
@@ -8,7 +9,6 @@
     let errorMessage = $state('');
     let isLoading = $state(false);
 
-    // 🔍 DIESE FUNKTION FEHLT ODER SCHLIESST NICHT RICHTIG:
     async function handleLogin() {
         errorMessage = '';
         isLoading = true;
@@ -16,7 +16,11 @@
         try {
             await login(username, password);
             localStorage.setItem('username', username);
-            await goto('/');
+
+            // Wenn der Hook uns mit ?redirect=... hierher geschickt hat,
+            // springen wir nach erfolgreichem Login dorthin zurück.
+            const redirectTo = $page.url.searchParams.get('redirect') || '/';
+            await goto(redirectTo);
         } catch (error: unknown) {
             if (error instanceof Error) {
                 errorMessage = error.message;

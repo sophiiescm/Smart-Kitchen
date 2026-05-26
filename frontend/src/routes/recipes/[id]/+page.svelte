@@ -250,7 +250,12 @@
 
 	<nav class="glass-nav">
 		<a href="/" class="logo">Smart<span>Kitchen</span></a>
-		<a href="/recipes" class="back-btn">← Alle Rezepte</a>
+		<div class="nav-right">
+			<a href="/recipes" class="back-btn">← Alle Rezepte</a>
+			{#if !isAuthenticated}
+				<a href="/auth/login" class="back-btn">Anmelden</a>
+			{/if}
+		</div>
 	</nav>
 
 	<main class="content">
@@ -582,6 +587,12 @@
 
 	.logo span {
 		color: #22c55e;
+	}
+
+	.nav-right {
+		display: flex;
+		gap: 10px;
+		align-items: center;
 	}
 
 	.back-btn {
