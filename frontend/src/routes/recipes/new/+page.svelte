@@ -15,11 +15,12 @@
 	let errorMessage = $state('');
 	let isSaving = $state(false);
 
-	let ingredients = $state<string[]>(['']);
+	type IngredientInput = { amount: number | null; unit: string; name: string };
+	let ingredients = $state<IngredientInput[]>([{ amount: null, unit: '', name: '' }]);
 	let steps = $state<string[]>(['']);
 
 	function addIngredient() {
-		ingredients = [...ingredients, ''];
+		ingredients = [...ingredients, { amount: null, unit: '', name: '' }];
 	}
 
 	function removeIngredient(index: number) {
@@ -123,8 +124,14 @@
 			image_url: imageUrl || undefined,
 			is_public: isPublic === true,
 			ingredients: ingredients
-				.filter((item) => item.trim().length > 0)
-				.map((name) => ({ name: name.trim(), amount: undefined, unit: undefined })),
+				.filter((item) => item.name.trim().length > 0)
+				.map((item) => ({
+					name: item.name.trim(),
+					amount: item.amount !== null && !Number.isNaN(Number(item.amount))
+						? Number(item.amount)
+						: undefined,
+					unit: item.unit.trim() || undefined,
+				})),
 			steps: steps
 				.filter((item) => item.trim().length > 0)
 				.map((instruction, index) => ({ step_number: index + 1, instruction: instruction.trim() })),
@@ -222,12 +229,10 @@
 							<label for="category-input">Kategorie</label>
 							<select id="category-input" bind:value={category}>
 								<option value="">Kategorie wählen</option>
-								<option value="Pasta">Pasta</option>
-								<option value="Dessert">Dessert</option>
 								<option value="Frühstück">Frühstück</option>
-								<option value="Vegan">Vegan</option>
-								<option value="Vegetarisch">Vegetarisch</option>
-								<option value="Fleisch">Fleisch</option>
+								<option value="Hauptspeise">Hauptspeise</option>
+								<option value="Dessert">Dessert</option>
+								<option value="Backen">Backen</option>
 							</select>
 						</div>
 
@@ -346,13 +351,30 @@
 
 				<div class="list-group">
 					{#each ingredients as ingredient, index}
-						<div class="list-item">
+						<div class="list-item ingredient-row">
 							<span class="item-number">{index + 1}</span>
 
 							<input
-								bind:value={ingredients[index]}
+								bind:value={ingredients[index].name}
 								type="text"
-								placeholder={`Zutat ${index + 1}, z.B. 200g Pasta`}
+								placeholder={`Name (z.B. Pasta)`}
+								class="ing-name"
+							/>
+
+							<input
+								bind:value={ingredients[index].amount}
+								type="number"
+								step="any"
+								min="0"
+								placeholder="Menge"
+								class="ing-amount no-spinner"
+							/>
+
+							<input
+								bind:value={ingredients[index].unit}
+								type="text"
+								placeholder="Einheit (g, ml, ...)"
+								class="ing-unit"
 							/>
 
 							{#if ingredients.length > 1}
@@ -826,6 +848,32 @@
 		gap: 14px;
 	}
 
+	.ingredient-row {
+		display: grid;
+		grid-template-columns: 34px 1fr 110px 130px auto;
+		gap: 10px;
+		align-items: center;
+	}
+
+	.ing-amount,
+	.ing-unit,
+	.ing-name {
+		padding: 12px 14px;
+		font-size: 14px;
+		border-radius: 12px;
+	}
+
+	/* Pfeil-Spinner bei Number-Input weg */
+	.no-spinner::-webkit-outer-spin-button,
+	.no-spinner::-webkit-inner-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+	.no-spinner {
+		-moz-appearance: textfield;
+		appearance: textfield;
+	}
+
 	.step-item {
 		align-items: flex-start;
 	}
@@ -976,6 +1024,19 @@
 		.cancel-btn {
 			width: 100%;
 			text-align: center;
+		}
+
+		.ingredient-row {
+			grid-template-columns: 34px 1fr 1fr auto;
+		}
+		.ing-name {
+			grid-column: 2 / span 2;
+		}
+		.ing-amount {
+			grid-column: 2 / span 1;
+		}
+		.ing-unit {
+			grid-column: 3 / span 1;
 		}
 	}
 </style>

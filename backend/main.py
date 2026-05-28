@@ -15,7 +15,11 @@ from auth import (
 )
 
 from database import Base, SessionLocal, engine, get_db, wait_for_db
-from models import User, Recipe, RecipeIngredient, RecipeStep, RecipeRating, Tag, recipe_favorites
+from models import (
+    User, Recipe, RecipeIngredient, RecipeStep, RecipeRating, Tag,
+    recipe_favorites, ShoppingListItem,
+)
+from categorize import categorize_ingredient
 from schemas import (
     Token,
     UserCreate,
@@ -25,6 +29,10 @@ from schemas import (
     RecipeResponse,
     RatingCreate,
     RatingResponse,
+    ShoppingListItemCreate,
+    ShoppingListItemUpdate,
+    ShoppingListItemResponse,
+    AddFromRecipeRequest,
 )
 
 app = FastAPI(title="SmartKitchen API", version="0.1.0")
@@ -640,3 +648,245 @@ def rate_recipe_by_id(
         db.commit()
         db.refresh(new_rating)
         return new_rating
+
+
+# ---------------------------------------------------------------------------
+# Einkaufsliste
+# ---------------------------------------------------------------------------
+
+def _normalize_name(name: str) -> str:
+    """Normalisiert Zutatennamen für Aggregation:
+    trimmen, lowercase, doppelte Leerzeichen weg.
+    'Mehl Type 405' und 'mehl type 405' werden so identisch behandelt.
+    """
+    return " ".join(name.strip().lower().split())
+
+
+def _normalize_unit(unit: Optional[str]) -> Optional[str]:
+    """Lowercase + trim, oder None wenn leer."""
+    if not unit:
+        return None
+    u = unit.strip().lower()
+    return u if u else None
+
+
+def _add_or_aggregate_item(
+    db: Session,
+    user_id: int,
+    name: str,
+    amount: Optional[float],
+    unit: Optional[str],
+    recipe_id: Optional[int] = None,
+) -> ShoppingListItem:
+    """Sucht ein passendes UNGEHAKTES Item des Users und addiert die Menge
+    auf, oder legt ein neues Item an.
+
+    Match-Kriterien: gleicher (normalisierter) Name UND gleiche (normalisierte)
+    Einheit. Unterschiedliche Einheiten ergeben getrennte Items, damit wir
+    keine Birnen mit Äpfeln verrechnen (z.B. '500 g Mehl' + '1 kg Mehl').
+    """
+    norm_name = _normalize_name(name)
+    norm_unit = _normalize_unit(unit)
+    category = categorize_ingredient(name)
+
+    candidates = (
+        db.query(ShoppingListItem)
+        .filter(
+            ShoppingListItem.user_id == user_id,
+            ShoppingListItem.is_checked.is_(False),
+        )
+        .all()
+    )
+
+    for candidate in candidates:
+        if _normalize_name(candidate.name) != norm_name:
+            continue
+        if _normalize_unit(candidate.unit) != norm_unit:
+            continue
+        # Match! Mengen aggregieren — None wird als 0 behandelt.
+        if amount is not None or candidate.amount is not None:
+            candidate.amount = (candidate.amount or 0.0) + (amount or 0.0)
+        # Kategorie bei Bedarf nachziehen
+        if not candidate.category:
+            candidate.category = category
+        db.commit()
+        db.refresh(candidate)
+        return candidate
+
+    # Kein Match → neues Item
+    new_item = ShoppingListItem(
+        user_id=user_id,
+        name=name.strip(),
+        amount=amount,
+        unit=norm_unit,
+        category=category,
+        is_checked=False,
+        recipe_id=recipe_id,
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+
+@app.get("/shopping-list", response_model=list[ShoppingListItemResponse])
+def get_shopping_list(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Komplette Einkaufsliste des eingeloggten Users.
+
+    Sortiert: ungehakte zuerst (gruppiert nach Kategorie), abgehakte ans Ende.
+    """
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    items = (
+        db.query(ShoppingListItem)
+        .filter(ShoppingListItem.user_id == user.id)
+        .order_by(
+            ShoppingListItem.is_checked.asc(),
+            ShoppingListItem.category.asc(),
+            ShoppingListItem.created_at.asc(),
+        )
+        .all()
+    )
+    return items
+
+
+@app.post("/shopping-list/items", response_model=ShoppingListItemResponse, status_code=201)
+def add_manual_item(
+    data: ShoppingListItemCreate,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Manuelles Item hinzufügen (z.B. 'Spülmittel'). Mit Aggregation."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    if not data.name.strip():
+        raise HTTPException(status_code=400, detail="Name darf nicht leer sein")
+
+    return _add_or_aggregate_item(
+        db, user.id, data.name, data.amount, data.unit, recipe_id=None
+    )
+
+
+@app.post("/shopping-list/from-recipe/{recipe_id}", response_model=list[ShoppingListItemResponse])
+def add_from_recipe(
+    recipe_id: int,
+    req: AddFromRecipeRequest,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Alle Zutaten eines Rezepts auf die Einkaufsliste übernehmen, mit
+    optionalem Skalierungsfaktor (z.B. 2.0 für doppelte Portionen)."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id).first()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Rezept nicht gefunden")
+    if not recipe.is_public and recipe.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Privates Rezept anderer User kann nicht übernommen werden.",
+        )
+
+    added: list[ShoppingListItem] = []
+    for ing in recipe.ingredients:
+        scaled_amount = ing.amount * req.scale if ing.amount is not None else None
+        item = _add_or_aggregate_item(
+            db, user.id, ing.name, scaled_amount, ing.unit, recipe_id=recipe.id
+        )
+        added.append(item)
+    return added
+
+
+@app.patch("/shopping-list/items/{item_id}", response_model=ShoppingListItemResponse)
+def update_item(
+    item_id: int,
+    data: ShoppingListItemUpdate,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Item ändern — typisch fürs Abhaken (is_checked) oder Mengen-Korrektur."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    item = db.query(ShoppingListItem).filter(
+        ShoppingListItem.id == item_id,
+        ShoppingListItem.user_id == user.id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item nicht gefunden")
+
+    if data.name is not None:
+        item.name = data.name.strip()
+        item.category = categorize_ingredient(item.name)
+    if data.amount is not None:
+        item.amount = data.amount
+    if data.unit is not None:
+        item.unit = _normalize_unit(data.unit)
+    if data.is_checked is not None:
+        item.is_checked = data.is_checked
+
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.delete("/shopping-list/items/{item_id}", status_code=200)
+def delete_item(
+    item_id: int,
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Einzelnes Item löschen."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    item = db.query(ShoppingListItem).filter(
+        ShoppingListItem.id == item_id,
+        ShoppingListItem.user_id == user.id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item nicht gefunden")
+    db.delete(item)
+    db.commit()
+    return {"detail": "Item gelöscht"}
+
+
+@app.delete("/shopping-list/checked", status_code=200)
+def clear_checked(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Alle abgehakten Items löschen — typisch nach dem Einkauf."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    deleted = db.query(ShoppingListItem).filter(
+        ShoppingListItem.user_id == user.id,
+        ShoppingListItem.is_checked.is_(True),
+    ).delete()
+    db.commit()
+    return {"detail": "Abgehakte Items gelöscht", "deleted": deleted}
+
+
+@app.delete("/shopping-list", status_code=200)
+def clear_all(
+    current_username: Annotated[str, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Komplette Einkaufsliste leeren."""
+    user = db.query(User).filter(User.username == current_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+    deleted = db.query(ShoppingListItem).filter(
+        ShoppingListItem.user_id == user.id
+    ).delete()
+    db.commit()
+    return {"detail": "Liste geleert", "deleted": deleted}

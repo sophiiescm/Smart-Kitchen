@@ -128,6 +128,27 @@ CREATE TABLE IF NOT EXISTS recipe_tags (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------
+-- 8. shopping_list_items  (persönliche Einkaufsliste pro User)
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shopping_list_items (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id     BIGINT       NOT NULL,
+    name        VARCHAR(255) NOT NULL,
+    amount      FLOAT        NULL,
+    unit        VARCHAR(50)  NULL,
+    category    VARCHAR(100) NULL,
+    is_checked  BOOLEAN      NOT NULL DEFAULT FALSE,
+    recipe_id   BIGINT       NULL,
+    created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX ix_shopping_list_items_user_id (user_id),
+    CONSTRAINT fk_shopping_list_user
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_shopping_list_recipe
+        FOREIGN KEY (recipe_id) REFERENCES recipes (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -----------------------------------------------------------
 -- 6c. recipe_favorites  (M:N – User ↔ Rezept, persönliche Favoriten)
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS recipe_favorites (

@@ -146,6 +146,43 @@ class GroupResponse(BaseModel):
 
 
 # ==========================================
+# SHOPPING LIST SCHEMAS
+# ==========================================
+class ShoppingListItemBase(BaseModel):
+    name: str
+    amount: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class ShoppingListItemCreate(ShoppingListItemBase):
+    """Manuelles Hinzufügen eines Einkaufslisten-Items."""
+    pass
+
+
+class ShoppingListItemUpdate(BaseModel):
+    """Patch — z.B. zum Abhaken oder Mengen ändern."""
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    unit: Optional[str] = None
+    is_checked: Optional[bool] = None
+
+
+class ShoppingListItemResponse(ShoppingListItemBase):
+    id: int
+    user_id: int
+    category: Optional[str] = None
+    is_checked: bool = False
+    recipe_id: Optional[int] = None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class AddFromRecipeRequest(BaseModel):
+    """Skalierungsfaktor: 1.0 = Original, 2.0 = doppelte Portionen, usw."""
+    scale: float = Field(default=1.0, gt=0)
+
+
+# ==========================================
 # AUTH SCHEMAS (Neu eingefügt für Phase 1)
 # ==========================================
 class TokenData(BaseModel):

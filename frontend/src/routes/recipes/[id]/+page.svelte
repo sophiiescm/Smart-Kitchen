@@ -11,6 +11,7 @@
 		isLoggedIn,
 		favoriteRecipe,
 		unfavoriteRecipe,
+		addShoppingListFromRecipe,
 	} from '$lib/api';
 
 	type Recipe = {
@@ -49,11 +50,60 @@
 	let editTime = $state('');
 	let editImageUrl = $state('');
 	let editIsPublic = $state(true);
-	let editIngredients = $state<string[]>(['']);
+	type EditIngredient = { amount: number | null; unit: string; name: string };
+	let editIngredients = $state<EditIngredient[]>([{ amount: null, unit: '', name: '' }]);
 	let editSteps = $state<string[]>(['']);
 	let editTags = $state('');
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
+
+	// Portionen-Skalierung + Einkaufsliste-Übernahme
+	let portions = $state<number>(1);
+	let isAddingToList = $state(false);
+	let listFeedback = $state('');
+
+	// Skalierungsfaktor relativ zur ursprünglichen Portionsangabe des Rezepts
+	let scaleFactor = $derived.by(() => {
+		const original = recipe?.servings && recipe.servings > 0 ? recipe.servings : 1;
+		return portions / original;
+	});
+
+	// Zutaten-Liste skaliert für die Anzeige
+	let scaledIngredients = $derived.by(() => {
+		if (!recipe?.ingredients) return [];
+		return recipe.ingredients.map((ing) => ({
+			...ing,
+			scaledAmount: ing.amount !== undefined && ing.amount !== null ? ing.amount * scaleFactor : null,
+		}));
+	});
+
+	function formatScaledAmount(amount: number | null, unit?: string): string {
+		if (amount === null || amount === undefined) return '';
+		const rounded = Math.round(amount * 100) / 100;
+		const str = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, '');
+		return unit ? `${str} ${unit}` : str;
+	}
+
+	async function handleAddToShoppingList() {
+		if (!recipe) return;
+		if (!isAuthenticated) {
+			listFeedback = '';
+			window.location.href = `/auth/login?redirect=/recipes/${recipe.id}`;
+			return;
+		}
+		isAddingToList = true;
+		listFeedback = '';
+		try {
+			await addShoppingListFromRecipe(recipe.id, scaleFactor);
+			listFeedback = `✓ ${recipe.ingredients?.length ?? 0} Zutaten zur Einkaufsliste hinzugefügt`;
+			setTimeout(() => (listFeedback = ''), 3500);
+		} catch (err) {
+			console.error(err);
+			listFeedback = '⚠ Konnte nicht hinzugefügt werden';
+		} finally {
+			isAddingToList = false;
+		}
+	}
 
 	onMount(async () => {
 		isAuthenticated = isLoggedIn();
@@ -66,6 +116,10 @@
 
 		try {
 			recipe = await getRecipe(recipeId);
+			// Portionen-Default: das was im Rezept steht (oder 1 wenn nichts angegeben)
+			if (recipe?.servings && recipe.servings > 0) {
+				portions = recipe.servings;
+			}
 
 			// Prüfen, ob der eingeloggte User der Besitzer ist
 			if (isAuthenticated && recipe) {
@@ -114,8 +168,12 @@
 		editImageUrl = recipe.image_url ?? '';
 		editIsPublic = recipe.is_public ?? true;
 		editIngredients = recipe.ingredients?.length
-			? recipe.ingredients.map((i) => i.name)
-			: [''];
+			? recipe.ingredients.map((i) => ({
+				amount: i.amount ?? null,
+				unit: i.unit ?? '',
+				name: i.name,
+			}))
+			: [{ amount: null, unit: '', name: '' }];
 		editSteps = recipe.steps?.length
 			? recipe.steps.map((s) => s.instruction)
 			: [''];
@@ -129,7 +187,7 @@
 	}
 
 	function addEditIngredient() {
-		editIngredients = [...editIngredients, ''];
+		editIngredients = [...editIngredients, { amount: null, unit: '', name: '' }];
 	}
 
 	function removeEditIngredient(i: number) {
@@ -210,8 +268,14 @@
 				image_url: editImageUrl || null,
 				is_public: editIsPublic,
 				ingredients: editIngredients
-					.filter((s) => s.trim().length > 0)
-					.map((name) => ({ name: name.trim() })),
+					.filter((i) => i.name.trim().length > 0)
+					.map((i) => ({
+						name: i.name.trim(),
+						amount: i.amount !== null && !Number.isNaN(Number(i.amount))
+							? Number(i.amount)
+							: undefined,
+						unit: i.unit.trim() || undefined,
+					})),
 				steps: editSteps
 					.filter((s) => s.trim().length > 0)
 					.map((instruction, idx) => ({ step_number: idx + 1, instruction: instruction.trim() })),
@@ -278,6 +342,9 @@
 	<nav class="glass-nav">
 		<a href="/" class="logo">Smart<span>Kitchen</span></a>
 		<div class="nav-right">
+			{#if isAuthenticated}
+				<a href="/shopping-list" class="back-btn">🛒 Einkaufsliste</a>
+			{/if}
 			<a href="/recipes" class="back-btn">← Alle Rezepte</a>
 			{#if !isAuthenticated}
 				<a href="/auth/login" class="back-btn">Anmelden</a>
@@ -401,18 +468,53 @@
 
 			<section class="detail-grid">
 				<div class="glass-card detail-card">
-					<h2>🥗 Zutaten</h2>
-					{#if recipe.ingredients && recipe.ingredients.length > 0}
+					<div class="ingredients-header">
+						<h2>🥗 Zutaten</h2>
+
+						<!-- Portionen-Stepper -->
+						<div class="portions-control" title="Portionen anpassen">
+							<button
+								type="button"
+								class="portion-btn"
+								onclick={() => (portions = Math.max(1, portions - 1))}
+								aria-label="Weniger Portionen"
+							>−</button>
+							<span class="portion-value">{portions} {portions === 1 ? 'Portion' : 'Portionen'}</span>
+							<button
+								type="button"
+								class="portion-btn"
+								onclick={() => (portions = Math.min(99, portions + 1))}
+								aria-label="Mehr Portionen"
+							>+</button>
+						</div>
+					</div>
+
+					{#if scaledIngredients.length > 0}
 						<ul class="ingredient-list">
-							{#each recipe.ingredients as ingredient}
+							{#each scaledIngredients as ingredient}
 								<li>
-									{#if ingredient.amount}
-										<span class="amount">{ingredient.amount} {ingredient.unit ?? ''}</span>
+									{#if ingredient.scaledAmount !== null}
+										<span class="amount">{formatScaledAmount(ingredient.scaledAmount, ingredient.unit)}</span>
 									{/if}
-									{ingredient.name}
+									<span class="ing-name">{ingredient.name}</span>
 								</li>
 							{/each}
 						</ul>
+
+						<!-- Auf Einkaufsliste -->
+						<div class="shop-action">
+							<button
+								type="button"
+								class="add-to-list-btn"
+								onclick={handleAddToShoppingList}
+								disabled={isAddingToList}
+							>
+								🛒 {isAddingToList ? 'Wird hinzugefügt...' : 'Zutaten auf die Einkaufsliste'}
+							</button>
+							{#if listFeedback}
+								<div class="list-feedback">{listFeedback}</div>
+							{/if}
+						</div>
 					{:else}
 						<p class="empty">Keine Zutaten angegeben.</p>
 					{/if}
@@ -461,12 +563,10 @@
 						<label for="edit-category">Kategorie</label>
 						<select id="edit-category" bind:value={editCategory}>
 							<option value="">Kategorie wählen</option>
-							<option value="Pasta">Pasta</option>
-							<option value="Dessert">Dessert</option>
 							<option value="Frühstück">Frühstück</option>
-							<option value="Vegan">Vegan</option>
-							<option value="Vegetarisch">Vegetarisch</option>
-							<option value="Fleisch">Fleisch</option>
+							<option value="Hauptspeise">Hauptspeise</option>
+							<option value="Dessert">Dessert</option>
+							<option value="Backen">Backen</option>
 						</select>
 					</div>
 
@@ -531,9 +631,28 @@
 						<button class="add-btn" type="button" onclick={addEditIngredient}>+ Hinzufügen</button>
 					</div>
 					{#each editIngredients as _, i}
-						<div class="list-item">
+						<div class="list-item ing-edit-row">
 							<span class="list-num">{i + 1}</span>
-							<input type="text" bind:value={editIngredients[i]} />
+							<input
+								type="text"
+								placeholder="Name"
+								bind:value={editIngredients[i].name}
+								class="ing-edit-name"
+							/>
+							<input
+								type="number"
+								step="any"
+								min="0"
+								placeholder="Menge"
+								bind:value={editIngredients[i].amount}
+								class="ing-edit-amount no-spinner"
+							/>
+							<input
+								type="text"
+								placeholder="Einheit"
+								bind:value={editIngredients[i].unit}
+								class="ing-edit-unit"
+							/>
 							{#if editIngredients.length > 1}
 								<button class="x-btn" type="button" onclick={() => removeEditIngredient(i)}>✕</button>
 							{/if}
@@ -926,6 +1045,103 @@
 		font-weight: 800;
 	}
 
+	.ingredients-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+
+	.ingredients-header h2 {
+		margin: 0;
+	}
+
+	.portions-control {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px;
+		border-radius: 12px;
+		background: rgba(34, 197, 94, 0.06);
+		border: 1px solid rgba(34, 197, 94, 0.18);
+	}
+
+	.portion-btn {
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		background: rgba(34, 197, 94, 0.15);
+		border: none;
+		color: #4ade80;
+		font-size: 18px;
+		font-weight: 700;
+		cursor: pointer;
+		font-family: inherit;
+		transition: 0.15s;
+	}
+
+	.portion-btn:hover {
+		background: rgba(34, 197, 94, 0.3);
+	}
+
+	.portion-value {
+		font-size: 13px;
+		font-weight: 700;
+		color: #d1fae5;
+		min-width: 90px;
+		text-align: center;
+	}
+
+	.ing-name {
+		flex: 1;
+	}
+
+	.shop-action {
+		margin-top: 20px;
+		padding-top: 16px;
+		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.add-to-list-btn {
+		padding: 12px 18px;
+		border-radius: 12px;
+		background: linear-gradient(to right, #16a34a, #065f46);
+		border: none;
+		color: white;
+		font-weight: 700;
+		font-size: 14px;
+		cursor: pointer;
+		font-family: inherit;
+		transition: 0.2s;
+		box-shadow: 0 6px 20px rgba(22, 163, 74, 0.25);
+	}
+
+	.add-to-list-btn:hover:not(:disabled) {
+		transform: translateY(-2px);
+		box-shadow: 0 10px 28px rgba(22, 163, 74, 0.35);
+	}
+
+	.add-to-list-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.list-feedback {
+		padding: 10px 14px;
+		border-radius: 10px;
+		background: rgba(34, 197, 94, 0.1);
+		border: 1px solid rgba(34, 197, 94, 0.25);
+		color: #86efac;
+		font-size: 13px;
+		font-weight: 600;
+		text-align: center;
+	}
+
 	.ingredient-list,
 	.step-list {
 		margin: 0;
@@ -1240,6 +1456,40 @@
 		align-items: center;
 		gap: 10px;
 		margin-bottom: 8px;
+	}
+
+	.ing-edit-row {
+		display: grid;
+		grid-template-columns: 28px 1fr 90px 110px auto;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.ing-edit-amount,
+	.ing-edit-unit,
+	.ing-edit-name {
+		padding: 10px 12px !important;
+		font-size: 13px !important;
+	}
+
+	/* Pfeil-Spinner bei Number-Input ausblenden */
+	.no-spinner::-webkit-outer-spin-button,
+	.no-spinner::-webkit-inner-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+	.no-spinner {
+		-moz-appearance: textfield;
+		appearance: textfield;
+	}
+
+	@media (max-width: 700px) {
+		.ing-edit-row {
+			grid-template-columns: 28px 1fr 1fr auto;
+		}
+		.ing-edit-name {
+			grid-column: 2 / span 2;
+		}
 	}
 
 	.list-num {

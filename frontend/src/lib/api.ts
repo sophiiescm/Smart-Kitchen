@@ -258,3 +258,72 @@ export async function unfavoriteRecipe(recipeId: number): Promise<void> {
 export async function getMyFavorites(): Promise<any[]> {
 	return await fetchProtected<any[]>('/recipes/favorites');
 }
+
+// ============================================================================
+// SHOPPING LIST
+// ============================================================================
+
+export type ShoppingListItem = {
+	id: number;
+	user_id: number;
+	name: string;
+	amount: number | null;
+	unit: string | null;
+	category: string | null;
+	is_checked: boolean;
+	recipe_id: number | null;
+	created_at: string;
+};
+
+export async function getShoppingList(): Promise<ShoppingListItem[]> {
+	return await fetchProtected<ShoppingListItem[]>('/shopping-list');
+}
+
+export async function addShoppingListItem(
+	name: string,
+	amount?: number | null,
+	unit?: string | null,
+): Promise<ShoppingListItem> {
+	return await fetchProtected<ShoppingListItem>('/shopping-list/items', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name, amount: amount ?? null, unit: unit ?? null }),
+	});
+}
+
+export async function addShoppingListFromRecipe(
+	recipeId: number,
+	scale: number = 1.0,
+): Promise<ShoppingListItem[]> {
+	return await fetchProtected<ShoppingListItem[]>(
+		`/shopping-list/from-recipe/${recipeId}`,
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ scale }),
+		},
+	);
+}
+
+export async function updateShoppingListItem(
+	id: number,
+	patch: Partial<{ name: string; amount: number | null; unit: string | null; is_checked: boolean }>,
+): Promise<ShoppingListItem> {
+	return await fetchProtected<ShoppingListItem>(`/shopping-list/items/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(patch),
+	});
+}
+
+export async function deleteShoppingListItem(id: number): Promise<void> {
+	await fetchProtected<any>(`/shopping-list/items/${id}`, { method: 'DELETE' });
+}
+
+export async function clearCheckedItems(): Promise<void> {
+	await fetchProtected<any>('/shopping-list/checked', { method: 'DELETE' });
+}
+
+export async function clearAllItems(): Promise<void> {
+	await fetchProtected<any>('/shopping-list', { method: 'DELETE' });
+}

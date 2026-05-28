@@ -31,7 +31,7 @@
 	let isLoggedIn = $state(false);
 	let currentUserId = $state<number | null>(null);
 
-	const categories = ['Pasta', 'Dessert', 'Frühstück', 'Vegan', 'Vegetarisch', 'Fleisch'];
+	const categories = ['Frühstück', 'Hauptspeise', 'Dessert', 'Backen'];
 
 	onMount(async () => {
 		// Suche aus URL-Parameter (?q=...) übernehmen
@@ -144,7 +144,12 @@
 
 	<nav class="glass-nav">
 		<a href="/" class="logo">Smart<span>Kitchen</span></a>
-		<a href="/" class="back-btn">← Dashboard</a>
+		<div class="nav-actions-row">
+			{#if isLoggedIn}
+				<a href="/shopping-list" class="back-btn">🛒 Einkaufsliste</a>
+			{/if}
+			<a href="/" class="back-btn">← Dashboard</a>
+		</div>
 	</nav>
 
 	<section class="container">
@@ -399,6 +404,12 @@
 
 	.logo span {
 		color: #22c55e;
+	}
+
+	.nav-actions-row {
+		display: flex;
+		gap: 10px;
+		align-items: center;
 	}
 
 	.back-btn {

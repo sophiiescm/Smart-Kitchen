@@ -67,6 +67,7 @@
 			<a href="/recipes" class="nav-link">Alle Rezepte</a>
 
 			{#if isLoggedIn}
+				<a href="/shopping-list" class="nav-link">🛒 Einkaufsliste</a>
 				<a href="/recipes/new" class="create-btn">
 					+ Neues Rezept
 				</a>

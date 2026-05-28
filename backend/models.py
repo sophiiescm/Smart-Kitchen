@@ -111,6 +111,22 @@ class Tag(Base):
 
     recipes = relationship("Recipe", secondary=recipe_tags, back_populates="tags")
 
+# Einkaufslisten-Item: ein User hat viele Items, jedes Item gehört genau einem User.
+class ShoppingListItem(Base):
+    __tablename__ = "shopping_list_items"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    amount = Column(Float, nullable=True)
+    unit = Column(String(50), nullable=True)
+    category = Column(String(100), nullable=True)
+    is_checked = Column(Boolean, default=False, nullable=False)
+    # Quellrezept zur Nachverfolgung (optional, nullable für manuelle Items)
+    recipe_id = Column(BigInteger, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # 7. groups [cite: 35-38]
 class Group(Base):
     __tablename__ = "groups"
