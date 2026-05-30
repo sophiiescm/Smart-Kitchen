@@ -14,7 +14,9 @@ docker compose up -d --build
 
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
-- API-Doku: `http://localhost:8000/docs`
+- API-Dokumentation: `http://localhost:8000/docs`
+
+> Hinweis: Beim Start wird automatisch ein Testnutzer `testuser` mit Passwort `test1234` angelegt, falls er noch nicht existiert.
 
 ---
 
@@ -23,15 +25,15 @@ docker compose up -d --build
 ### 1.1 Registrierung
 
 - Gehe zu `/auth/register`.
-- Fülle Username, E-Mail und Passwort aus.
-- Erwartet: Weiterleitung zur Login-Seite.
+- Fülle Nutzername, E-Mail und Passwort aus.
+- Erwartet: Erfolgreiche Registrierung und Hinweis zur Anmeldung.
 
 ### 1.2 Login
 
 - Gehe zu `/auth/login`.
-- Melde dich mit dem gerade erstellten Nutzer an.
-- Erwartet: Weiterleitung zur Startseite.
-- Prüfe: `localStorage` enthält `token` und `username`.
+- Melde dich mit dem registrierten Nutzer an.
+- Erwartet: Weiterleitung zur Rezeptliste.
+- Prüfe: Der Token wird im `localStorage` gespeichert.
 
 ---
 
@@ -42,14 +44,15 @@ docker compose up -d --build
 - Gehe zu `/recipes/new`.
 - Fülle Titel, Kategorie, Beschreibung und mindestens eine Zutat sowie einen Schritt aus.
 - Wähle `Öffentlich` oder `Privat`.
-- Klicke `Rezept veröffentlichen →`.
+- Optional: Füge Tags hinzu.
+- Klicke auf `Rezept veröffentlichen`.
 
 ### 2.2 Erwartetes Verhalten
 
-- Bei Erfolg: Weiterleitung zu `/recipes`.
+- Bei Erfolg: Weiterleitung zur Rezeptliste oder Detailseite.
 - Bei Fehler: Fehlermeldung im Formular.
-- Prüfe: Öffentliches Rezept erscheint in der Rezeptliste.
-- Prüfe: Privates Rezept erscheint nur für den Ersteller.
+- Prüfe: Öffentliches Rezept erscheint in der öffentlichen Liste.
+- Prüfe: Privates Rezept erscheint in der eigenen Rezeptübersicht (`/recipes/mine`).
 
 ---
 
@@ -57,36 +60,87 @@ docker compose up -d --build
 
 - Gehe zu `/recipes`.
 - Erwartet: öffentliche Rezepte werden angezeigt.
+- Optional: Filtere nach Kategorie, Schwierigkeit oder Tag.
 - Klicke ein Rezept an, um zur Detailseite zu gelangen.
-- Prüfe: Titel, Beschreibung, Zutaten, Schritte und Tags werden angezeigt.
+- Prüfe: Titel, Beschreibung, Zutaten, Schritte, Tags, Schwierigkeit und Zubereitungszeit werden angezeigt.
 
 ---
 
-## 4. Rezeptdetails und Bewertung
+## 4. Eigene Rezepte und Favoriten
 
-### 4.1 Detailseite
+### 4.1 Eigene Rezepte
+
+- Gehe zu `/recipes/mine`.
+- Erwartet: Liste aller eigenen Rezepte, inklusive privater Rezepte.
+- Prüfe: Bearbeiten und Löschen ist möglich, wenn das Feature im Frontend verfügbar ist.
+
+### 4.2 Favoriten
+
+- Favorisiere ein öffentliches Rezept.
+- Erwartet: das Rezept erscheint in der Favoritenliste.
+- Entferne ein Favorit wieder.
+- Prüfe: `GET /recipes/favorites` liefert die korrekte Liste.
+
+---
+
+## 5. Rezeptdetails und Bewertung
+
+### 5.1 Detailseite
 
 - Öffne `/recipes/{id}` für ein öffentliches Rezept.
 - Erwartet: Detailansicht lädt ohne Fehler.
-- Prüfe: Kategorie, Zeit, Bewertung und Tag-Liste.
+- Prüfe: Kategorie, Zubereitungszeit, Bewertung und Tags werden angezeigt.
 
-### 4.2 Bewertung
+### 5.2 Bewertung
 
-- Klicke auf einen Stern.
+- Klicke auf einen Stern oder sende eine Bewertung ab.
 - Erwartet: Bewertung wird gespeichert.
-- Prüfe: Durchschnittsbewertung aktualisiert sich.
+- Prüfe: Durchschnittsbewertung und Bewertungsanzahl aktualisieren sich.
 
 ---
 
-## 5. Backend-API testen
+## 6. Einkaufsliste
 
-### 5.1 Authentifizierung
+### 6.1 Manuelles Item hinzufügen
+
+- Gehe zu `/shopping-list`.
+- Füge ein Item mit Name, Menge und Einheit hinzu.
+- Erwartet: Item wird in der Liste angezeigt.
+
+### 6.2 Item bearbeiten
+
+- Markiere ein Item als erledigt.
+- Ändere Menge oder Einheit.
+- Erwartet: Aktualisierte Werte erscheinen korrekt.
+
+### 6.3 Rezeptzutaten übernehmen
+
+- Wähle ein Rezept aus und übernehme die Zutaten.
+- Optional: Skaliere die Mengen (z. B. `2.0` für doppelte Portion).
+- Prüfe: hinzugefügte Zutaten erscheinen in der Einkaufsliste.
+
+### 6.4 Liste aufräumen
+
+- Lösche ein einzelnes Item.
+- Lösche alle abgehakte Items.
+- Lösche die gesamte Einkaufsliste.
+
+---
+
+## 7. Backend-API testen
+
+### 7.1 Authentifizierung
 
 - `POST /auth/register` mit JSON `username`, `email`, `password`
 - `POST /token` mit Formular-Daten `username`, `password`, `grant_type=password`
 - Erwartet: gültiger JWT im Feld `access_token`
 
-### 5.2 Rezept erstellen
+### 7.2 Profil abrufen
+
+- `GET /my-profile` mit Authorization Header `Bearer <token>`.
+- Erwartet: Nutzerinformationen im Response.
+
+### 7.3 Rezept erstellen
 
 - `POST /recipes` mit Authorization Header `Bearer <token>` und JSON:
 
@@ -103,20 +157,49 @@ docker compose up -d --build
 
 - Erwartet: HTTP 201 und Rezeptdaten im Response.
 
-### 5.3 Öffentliche Rezeptliste
+### 7.4 Öffentliche Rezeptliste und Filter
 
 - `GET /recipes`
-- Erwartet: Liste öffentlicher Rezepte.
+- Optional: `?q=`, `?category=`, `?tag=`, `?difficulty=`, `?max_time=`.
+- Erwartet: Liste von Rezepten.
 
-### 5.4 Einzelnes Rezept
+### 7.5 Einzelnes Rezept
 
 - `GET /recipes/{id}`
 - Erwartet: Rezeptdetails, sofern das Rezept öffentlich ist oder der Nutzer der Ersteller ist.
 
+### 7.6 Lieblingsrezepte
+
+- `POST /recipes/{id}/favorite` – Rezept favorisieren.
+- `DELETE /recipes/{id}/favorite` – Favorit entfernen.
+- `GET /recipes/favorites` – Liste der eigenen Favoriten.
+
+### 7.7 Bewertung
+
+- `POST /recipes/{id}/ratings` mit JSON `{ "recipe_id": <id>, "rating": 4 }`.
+- Erwartet: HTTP 201 und Bewertungsdaten.
+
+### 7.8 Einkaufsliste
+
+- `GET /shopping-list`
+- `POST /shopping-list/items` mit JSON `{ "name": "Milch", "amount": 1, "unit": "L" }`
+- `POST /shopping-list/from-recipe/{id}` mit JSON `{ "scale": 1.0 }`
+- `PATCH /shopping-list/items/{id}` zum Aktualisieren
+- `DELETE /shopping-list/items/{id}` zum Löschen
+- `DELETE /shopping-list/checked` zum Entfernen abgehakter Items
+- `DELETE /shopping-list` zum Leeren der Liste
+
 ---
 
-## 6. Fehlerfälle
+## 8. Fehlerfälle
 
-- Prüfe ungültiges Login: falsches Passwort → `401`.
-- Prüfe privaten Zugriff: `GET /recipes/{id}` für privates Rezept als Fremder → `403`.
-- Prüfe Bewertung ohne Token → Weiterleitung zur Login-Seite oder Fehlermeldung.
+- Ungültiges Login: falsches Passwort → `401`.
+- Privates Rezept abfragen als Fremder → `403`.
+- Rezept bewerten ohne Token → `401`.
+- Favoriten-Operationen ohne Token → `401`.
+
+---
+
+## 9. Gesundheit prüfen
+
+- `GET /health` sollte `{ "status": "ok" }` zurückgeben.
